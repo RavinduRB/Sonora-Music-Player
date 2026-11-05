@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#75A2CC" />
+    <title>Sonora Mini Player</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="widget" aria-label="Sonora music player">
+      <div class="liquid-orb orb-one"></div>
+      <div class="liquid-orb orb-two"></div>
+
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">◒</span>
+          <span>sonora</span>
+        </div>
+        <div class="header-actions">
+          <button class="icon-button" id="libraryButton" title="Open library" aria-label="Open library">≋</button>
+          <button class="icon-button pin-button active" id="pinButton" title="Unpin from desktop" aria-label="Unpin from desktop">⌖</button>
+          <button class="icon-button" id="saveButton" title="Save library as JSON" aria-label="Save library as JSON">▣</button>
+          <button class="window-button" id="minimizeButton" title="Minimize widget" aria-label="Minimize widget">—</button>
+          <button class="window-button close-window" id="closeButton" title="Close widget" aria-label="Close widget">×</button>
+        </div>
+      </header>
+
+      <section class="now-playing">
+        <div class="cover" id="cover" aria-hidden="true">
+          <span class="cover-shine"></span>
+          <span class="cover-note">♪</span>
+        </div>
+        <div class="track-meta">
+          <span class="eyebrow" id="sourceLabel">READY TO PLAY</span>
+          <h1 id="trackTitle">Your quiet space</h1>
+          <p id="trackArtist">Add a song to begin</p>
+        </div>
+        <button class="favorite icon-button" id="favoriteButton" title="Favorite" aria-label="Favorite">♡</button>
+      </section>
+
+      <div class="progress-area">
+        <input id="seekBar" class="range" type="range" min="0" max="100" value="0" aria-label="Seek" />
+        <div class="time-row"><span id="currentTime">0:00</span><span id="duration">0:00</span></div>
+      </div>
+
+      <div class="controls">
+        <button class="control-button subtle" id="shuffleButton" title="Shuffle" aria-label="Shuffle">⤨</button>
+        <button class="control-button" id="previousButton" title="Previous" aria-label="Previous song">|‹</button>
+        <button class="play-button" id="playButton" title="Play" aria-label="Play">▶</button>
+        <button class="control-button" id="nextButton" title="Next" aria-label="Next song">›|</button>
+        <button class="control-button subtle" id="repeatButton" title="Repeat" aria-label="Repeat">↻</button>
+      </div>
+
+      <div class="volume-row">
+        <button class="volume-button" id="volumeButton" title="Mute" aria-label="Mute">🔊</button>
+        <input id="volumeBar" class="range" type="range" min="0" max="100" value="78" aria-label="Volume" />
+        <span id="volumeValue">78</span>
+      </div>
+
+      <section class="library-panel" id="libraryPanel" aria-label="Music library">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">YOUR LIBRARY</span>
+            <h2>Sound shelf <span id="songCount">0</span></h2>
+          </div>
+          <button class="close-button" id="closeLibrary" aria-label="Close library">×</button>
+        </div>
+        <div class="add-grid">
+          <label class="add-card" for="fileInput">
+            <span class="add-icon">＋</span>
+            <span><strong>Local audio</strong><small>MP3, WAV, OGG</small></span>
+            <input id="fileInput" type="file" accept="audio/*" multiple hidden />
+          </label>
+          <button class="add-card" id="youtubeButton">
+            <span class="add-icon youtube-icon">▶</span>
+            <span><strong>YouTube link</strong><small>Paste a video URL</small></span>
+          </button>
+        </div>
+        <div class="drop-zone" id="dropZone">Drop audio files here to add them</div>
+        <ul class="song-list" id="songList"></ul>
+        <div class="panel-footer">
+          <button class="text-button" id="exportButton">↓ Export JSON</button>
+          <label class="text-button" for="importInput">↑ Import JSON<input id="importInput" type="file" accept="application/json,.json" hidden /></label>
+        </div>
+      </section>
+
+      <div class="youtube-dialog" id="youtubeDialog" role="dialog" aria-modal="true" aria-labelledby="youtubeDialogTitle">
+        <div class="dialog-card">
+          <span class="eyebrow">ADD TO LIBRARY</span>
+          <h2 id="youtubeDialogTitle">YouTube link</h2>
+          <input id="youtubeInput" type="url" placeholder="https://youtube.com/watch?v=..." autocomplete="off" />
+          <div class="dialog-actions">
+            <button class="text-button" id="cancelYoutube">Cancel</button>
+            <button class="dialog-submit" id="saveYoutube">Add song</button>
+          </div>
+        </div>
+      </div>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <div id="youtubePlayer" aria-hidden="true"></div>
+      <audio id="audio" preload="metadata"></audio>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

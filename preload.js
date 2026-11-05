@@ -1,0 +1,13 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('sonora', {
+  minimize: () => ipcRenderer.send('sonora:minimize'),
+  close: () => ipcRenderer.send('sonora:close'),
+  getYoutubeMetadata: (url) => ipcRenderer.invoke('sonora:youtube-metadata', url),
+  loadLibrary: () => ipcRenderer.invoke('sonora:load-library'),
+  persistLibrary: (library) => ipcRenderer.invoke('sonora:persist-library', library),
+  saveLibrary: (library) => ipcRenderer.invoke('sonora:save-library', library),
+  setAlwaysOnTop: (enabled) => ipcRenderer.send('sonora:always-on-top', enabled),
+  setMouseThrough: (enabled) => ipcRenderer.send('sonora:mouse-through', enabled),
+  resize: (height) => ipcRenderer.send('sonora:resize', height)
+});

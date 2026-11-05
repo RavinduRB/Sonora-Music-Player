@@ -1,0 +1,32 @@
+{
+  "name": "sonora-widget",
+  "version": "1.0.0",
+  "description": "A compact glassmorphism desktop music widget",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-packager . \"Sonora Widget\" --platform=win32 --arch=x64 --out=release-packaged --overwrite --prune=true --ignore=\"^/node_modules\" --ignore=\"^/(dist|release|release-packaged)\"",
+    "build:portable": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "@electron/packager": "^18.4.4",
+    "electron": "^39.1.2",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.sonora.widget",
+    "productName": "Sonora Widget",
+    "artifactName": "Sonora-Widget-${version}.${ext}",
+    "files": [
+      "index.html",
+      "styles.css",
+      "app.js",
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable"
+    }
+  }
+}
