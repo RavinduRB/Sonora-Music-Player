@@ -18,8 +18,20 @@ const ICONS = {
   heartFilled: svg('<path fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 20.5s-7.6-4.6-9.4-9.3C1.4 8 3.2 4.8 6.6 4.8c2 0 3.4 1 5.4 3 2-2 3.4-3 5.4-3 3.4 0 5.2 3.2 4 6.4-1.8 4.7-9.4 9.3-9.4 9.3z"/>', 16),
   edit: svg(`<path ${stroke} d="M4 20h4L19.5 8.5a1.9 1.9 0 0 0 0-2.7l-1.3-1.3a1.9 1.9 0 0 0-2.7 0L4 16v4zM13.5 6.5l4 4"/>`, 12),
   volume: svg(`<path fill="currentColor" d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path ${stroke} d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>`, 13),
-  muted: svg(`<path fill="currentColor" d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path ${stroke} d="m16 9.5 5 5M21 9.5l-5 5"/>`, 13)
+  muted: svg(`<path fill="currentColor" d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path ${stroke} d="m16 9.5 5 5M21 9.5l-5 5"/>`, 13),
+  sun: svg(`<circle ${stroke} cx="12" cy="12" r="4"/><path ${stroke} d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/>`, 15),
+  moon: svg(`<path ${stroke} d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/>`, 14),
+  auto: svg(`<circle ${stroke} cx="12" cy="12" r="8.5"/><path fill="currentColor" d="M12 3.5a8.5 8.5 0 0 1 0 17z"/>`, 14)
 };
+
+const THEME_MODES = ['auto', 'light', 'dark'];
+const THEME_LABELS = {
+  auto: 'Theme: automatic (follows the background)',
+  light: 'Theme: light',
+  dark: 'Theme: dark'
+};
+let themeMode = 'auto';
+let autoTheme = 'light';
 
 let songs = normalizeSongs(loadSongs());
 let activeIndex = -1;
@@ -45,10 +57,25 @@ function newId() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now(
 
 function setPlayingState(playing) {
   $('#cover').classList.toggle('playing', playing);
-  const button = $('#playButton');
-  button.innerHTML = playing ? ICONS.pause : ICONS.play;
-  button.title = playing ? 'Pause' : 'Play';
-  button.setAttribute('aria-label', button.title);
+  ['#playButton', '#miniPlayButton'].forEach((selector) => {
+    const button = $(selector);
+    button.innerHTML = playing ? ICONS.pause : ICONS.play;
+    button.title = playing ? 'Pause' : 'Play';
+    button.setAttribute('aria-label', button.title);
+  });
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = themeMode === 'auto' ? autoTheme : themeMode;
+  const button = $('#themeButton');
+  button.innerHTML = ICONS[themeMode === 'auto' ? 'auto' : themeMode === 'light' ? 'sun' : 'moon'];
+  button.title = `${THEME_LABELS[themeMode]} - click to change`;
+  button.setAttribute('aria-label', THEME_LABELS[themeMode]);
+}
+function setThemeMode(mode) {
+  themeMode = THEME_MODES.includes(mode) ? mode : 'auto';
+  applyTheme();
+  window.sonora?.saveSettings({ themeMode }).catch(() => showToast('Could not save the theme'));
 }
 
 function prepareYoutubePlayer() {
@@ -285,9 +312,6 @@ function cancelRename() {
 function showTrack(song) {
   $('#trackTitle').textContent = song ? song.title : 'Your quiet space';
   $('#trackArtist').textContent = song ? subtitleFor(song) : 'Add a song to begin';
-  $('#sourceLabel').textContent = !song ? 'READY TO PLAY'
-    : song.type === 'local' ? 'LOCAL AUDIO'
-      : isPlaylist(song) ? 'YOUTUBE PLAYLIST' : 'YOUTUBE LINK';
   refreshFavoriteButton();
 }
 function refreshFavoriteButton() {
@@ -546,6 +570,13 @@ $('#volumeButton').addEventListener('click', () => {
 applyVolume(volumeLevel);
 $('#previousButton').addEventListener('click', () => changeSong(-1));
 $('#nextButton').addEventListener('click', () => changeSong(1));
+$('#miniPreviousButton').addEventListener('click', () => changeSong(-1));
+$('#miniNextButton').addEventListener('click', () => changeSong(1));
+$('#miniPlayButton').addEventListener('click', togglePlayback);
+$('#themeButton').addEventListener('click', () => {
+  setThemeMode(THEME_MODES[(THEME_MODES.indexOf(themeMode) + 1) % THEME_MODES.length]);
+  showToast({ auto: 'Theme: automatic', light: 'Theme: light', dark: 'Theme: dark' }[themeMode]);
+});
 $('#shuffleButton').addEventListener('click', () => {
   shuffled = !shuffled;
   shuffleSeen = new Set(activeSong() ? [activeSong().id] : []);
@@ -676,6 +707,9 @@ setPlayingState(false);
 updateModeButtons();
 $('#previousButton').innerHTML = ICONS.previous;
 $('#nextButton').innerHTML = ICONS.next;
+$('#miniPreviousButton').innerHTML = ICONS.previous;
+$('#miniNextButton').innerHTML = ICONS.next;
+applyTheme();
 $('#shuffleButton').innerHTML = ICONS.shuffle;
 setLibraryOpen(widget.classList.contains('library-open'));
 renderSongs();
@@ -687,4 +721,7 @@ window.sonora?.loadLibrary().then((savedSongs) => {
   songs.filter((song) => song.type === 'youtube' && !song.metadataLoaded).forEach(enrichYoutubeSong);
 }).catch(() => showToast('Could not restore the saved library'));
 trackWidgetBounds();
-window.sonora?.onTheme((theme) => { document.documentElement.dataset.theme = theme; });
+window.sonora?.loadSettings().then((settings) => {
+  if (THEME_MODES.includes(settings?.themeMode)) { themeMode = settings.themeMode; applyTheme(); }
+}).catch(() => {});
+window.sonora?.onTheme((theme) => { autoTheme = theme; applyTheme(); });

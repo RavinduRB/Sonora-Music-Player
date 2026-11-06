@@ -39,6 +39,8 @@ The widget is designed to stay small, remain above other applications, and provi
 - Expandable music library with a single button to open and close it
 - Library scroll bar styled with the application colors
 - Automatic light/dark appearance: text, icons, and glass tint change to stay readable over bright or dark desktop backgrounds
+- Theme button to switch manually between automatic, light, and dark (the choice is remembered)
+- Tiny previous, play/pause, and next buttons on the compact widget (hidden while the library is open)
 - Remove songs from the library
 - JSON library save dialog
 - JSON library import and export
@@ -200,6 +202,7 @@ Sonora retrieves the YouTube title and channel/artist name. YouTube playback run
 ### 7. Use playback controls
 
 - **Play/Pause**: Start or pause the current track. The icon always matches the real state.
+- **Tiny buttons (compact view)**: While the library is closed, small previous, play/pause, and next buttons sit beside the song title so you can control playback without opening the library. They hide when the library is open, where the full controls are visible.
 - **Previous / Next**: Move to the previous or next song (wrapping around at the ends). With Shuffle on, Previous returns to the songs played before.
 - **Shuffle**: Plays songs in random order without repeating one until all have played. The button is highlighted when on.
 - **Repeat**: Click to cycle through three states:
@@ -267,9 +270,17 @@ Click the `×` button in the header to close the widget. Reopen it with the exec
 
 The previous library is restored automatically. Local audio and YouTube songs remain available for playback.
 
-### 15. Automatic light and dark appearance
+### 15. Automatic and manual light/dark appearance
 
-Sonora measures the brightness of the desktop behind the widget about every 1.5 seconds. Over a bright background it uses dark text and icons on a light glass panel. Over a dark background it switches to light text and icons on a dark glass panel. A small delay and threshold gap prevent flickering on mid-tone backgrounds. Move the widget over a different window or wallpaper and the colors follow automatically.
+Click the theme button in the header (next to the library button) to cycle through three modes:
+
+- **Automatic** (half-filled circle icon): the default. Sonora follows the desktop behind the widget.
+- **Light** (sun icon): always use the light theme.
+- **Dark** (moon icon): always use the dark theme.
+
+The selected mode is saved and restored the next time Sonora starts.
+
+In automatic mode, Sonora measures the brightness of the desktop behind the widget about every 1.5 seconds. Over a bright background it uses dark text and icons on a light glass panel. Over a dark background it switches to light text and icons on a dark glass panel. A small delay and threshold gap prevent flickering on mid-tone backgrounds. Move the widget over a different window or wallpaper and the colors follow automatically.
 
 To measure only the desktop (and not itself), the widget is excluded from screen capture. As a result, it will not appear in screenshots or screen recordings.
 

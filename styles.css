@@ -61,7 +61,7 @@ body {
 }
 
 .widget {
-  width: 7cm;
+  width: 300px;
   min-width: 265px;
   height: 3cm;
   min-height: 114px;
@@ -101,6 +101,13 @@ body {
 .cover-note { color: white; font: 24px 'Playfair Display', serif; text-shadow: 0 2px 6px #37617a66; }
 .cover-shine { position: absolute; width: 45px; height: 100px; transform: rotate(38deg); background: #ffffff55; left: -25px; top: -26px; }
 .track-meta { min-width: 0; flex: 1; }
+.mini-controls { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.library-open .mini-controls { display: none; }
+.mini-button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 7px; color: var(--muted); background: transparent; cursor: pointer; transition: .2s ease; -webkit-app-region: no-drag; }
+.mini-button svg { width: 11px; height: 11px; }
+.mini-button:hover { color: var(--ink); background: var(--hover); }
+.mini-play { width: 22px; height: 22px; border-radius: 50%; color: #fff; background: var(--blue); box-shadow: 0 3px 7px #5c89b455; }
+.mini-play:hover { color: #fff; background: #638fb9; transform: scale(1.08); }
 .eyebrow { display: block; color: var(--soft); font-size: 7px; font-weight: 700; letter-spacing: 1.15px; }
 h1, h2, p { margin: 0; }
 h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; margin: 3px 0 2px; letter-spacing: -.25px; }

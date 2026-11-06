@@ -141,6 +141,20 @@ ipcMain.handle('sonora:persist-library', async (_event, library) => {
   await fs.promises.writeFile(libraryPath, JSON.stringify(library, null, 2), 'utf8');
   return true;
 });
+const settingsPath = () => path.join(app.getPath('userData'), 'sonora-settings.json');
+ipcMain.handle('sonora:load-settings', async () => {
+  try {
+    const settings = JSON.parse(await fs.promises.readFile(settingsPath(), 'utf8'));
+    return ['auto', 'light', 'dark'].includes(settings?.themeMode) ? { themeMode: settings.themeMode } : {};
+  } catch {
+    return {};
+  }
+});
+ipcMain.handle('sonora:save-settings', async (_event, settings) => {
+  if (!['auto', 'light', 'dark'].includes(settings?.themeMode)) throw new Error('Invalid theme mode');
+  await fs.promises.writeFile(settingsPath(), JSON.stringify({ themeMode: settings.themeMode }, null, 2), 'utf8');
+  return true;
+});
 ipcMain.handle('sonora:save-library', async (_event, library) => {
   if (!Array.isArray(library)) throw new Error('Library data must be an array');
   const result = await dialog.showSaveDialog(mainWindow, {
