@@ -8,12 +8,13 @@ The widget is designed to stay small, remain above other applications, and provi
 
 - **Electron** - Windows desktop window, always-on-top behavior, transparent frameless widget, native save dialog, and persistent app storage
 - **HTML5** - Accessible player structure and controls
-- **CSS3** - Glassmorphism, liquid-glass layers, responsive widget layout, disc animation, and custom controls
+- **CSS3** - Glassmorphism, liquid-glass layers, light/dark theme variables, responsive widget layout, disc animation, and custom controls
 - **Vanilla JavaScript** - Playback state, queue management, local files, YouTube integration, metadata loading, JSON handling, and persistence
 - **HTML5 Audio API** - Local audio playback
-- **YouTube IFrame Player API** - Embedded audio-only YouTube playback
+- **YouTube IFrame Player API** - Embedded audio-only YouTube video and playlist playback
 - **YouTube oEmbed API** - Song title, channel/artist, and thumbnail metadata
 - **Node.js HTTPS and filesystem APIs** - Metadata requests and library persistence
+- **Electron desktopCapturer** - Measures the desktop brightness behind the widget for the automatic light/dark appearance
 - **Electron Packager** - Windows executable packaging
 
 ## Key features
@@ -304,3 +305,11 @@ Confirm that internet access is available and press play again. YouTube playback
 ### A local song does not play
 
 Confirm that the file is a supported audio format and import it again through the library.
+
+### The colors do not match the background
+
+The light/dark appearance updates about every 1.5 to 3 seconds after the widget moves or the background changes. Mid-tone backgrounds keep the current theme to avoid flickering. The widget is excluded from screen capture so it can measure the desktop behind it; if screen capture is blocked (for example on a locked screen), the last theme is kept.
+
+### Updating the packaged executable
+
+Close Sonora before running `npm run build`; a running instance locks the files in `release-packaged\Sonora-win32-x64`.
