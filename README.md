@@ -94,12 +94,12 @@ The Sonora widget opens as a small desktop window. It does not open as a normal 
 The packaged executable is located at:
 
 ```text
-release-packaged\Sonora Widget-win32-x64\Sonora Widget.exe
+release-packaged\Sonora-win32-x64\Sonora.exe
 ```
 
-Double-click `Sonora Widget.exe` to open the widget.
+Double-click `Sonora.exe` to open the widget.
 
-Keep the complete `Sonora Widget-win32-x64` folder together. The executable requires the Electron runtime files stored beside it.
+Keep the complete `Sonora-win32-x64` folder together. The executable requires the Electron runtime files stored beside it.
 
 ## Build a new Windows executable
 
@@ -112,20 +112,20 @@ npm run build
 The generated application is written to:
 
 ```text
-release-packaged\Sonora Widget-win32-x64\
+release-packaged\Sonora-win32-x64\
 ```
 
 The executable is:
 
 ```text
-release-packaged\Sonora Widget-win32-x64\Sonora Widget.exe
+release-packaged\Sonora-win32-x64\Sonora.exe
 ```
 
 ## Manual user guide
 
 ### 1. Start Sonora
 
-1. Double-click `Sonora Widget.exe`, or run `npm start` from the project folder.
+1. Double-click `Sonora.exe`, or run `npm start` from the project folder.
 2. The widget appears near the top-right of the desktop.
 3. The widget is pinned above other windows by default.
 
@@ -255,7 +255,7 @@ npm install
 npm start
 ```
 
-If the packaged executable does not start, confirm that the complete `Sonora Widget-win32-x64` folder has not been separated.
+If the packaged executable does not start, confirm that the complete `Sonora-win32-x64` folder has not been separated.
 
 ### YouTube metadata does not appear
 

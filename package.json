@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-packager . \"Sonora Widget\" --platform=win32 --arch=x64 --out=release-packaged --overwrite --prune=true --ignore=\"^/node_modules\" --ignore=\"^/(dist|release|release-packaged)\"",
+    "build": "electron-packager . \"Sonora\" --platform=win32 --arch=x64 --icon=icon.ico --out=release-packaged --overwrite --prune=true --ignore=\"^/node_modules\" --ignore=\"^/(dist|release|release-packaged)\"",
     "build:portable": "electron-builder --win portable"
   },
   "devDependencies": {
@@ -15,9 +15,10 @@
   },
   "build": {
     "appId": "com.sonora.widget",
-    "productName": "Sonora Widget",
-    "artifactName": "Sonora-Widget-${version}.${ext}",
+    "productName": "Sonora",
+    "artifactName": "Sonora-${version}.${ext}",
     "files": [
+      "icon.ico",
       "index.html",
       "styles.css",
       "app.js",
@@ -26,6 +27,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "icon.ico",
       "target": "portable"
     }
   }

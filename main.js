@@ -59,6 +59,7 @@ async function createWindow() {
     resizable: false,
     alwaysOnTop: true,
     show: false,
+    icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
