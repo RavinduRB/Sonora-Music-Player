@@ -24,17 +24,20 @@ The widget is designed to stay small, remain above other applications, and provi
 - Click-through transparent area so other applications remain usable
 - Local MP3, WAV, OGG, and other browser-supported audio files
 - Drag-and-drop audio importing
-- YouTube URL importing
-- Audio-only YouTube playback inside the widget
+- YouTube video and playlist URL importing
+- Audio-only YouTube playback inside the widget, including full playlists
 - No external browser window for YouTube playback
 - YouTube title and channel/artist metadata extraction
-- Play, pause, previous, next, shuffle, and repeat controls
+- Play, pause, previous, next, shuffle, and three-state repeat controls
 - Seek bar with current time and duration
 - Local and YouTube volume control
 - Mute and unmute button
 - Rotating disc animation while music is playing
-- Favorite button
-- Expandable music library
+- Favorite songs that are highlighted and kept at the top of the library
+- Rename songs
+- Expandable music library with a single button to open and close it
+- Library scroll bar styled with the application colors
+- Automatic light/dark appearance: text, icons, and glass tint change to stay readable over bright or dark desktop backgrounds
 - Remove songs from the library
 - JSON library save dialog
 - JSON library import and export
@@ -52,6 +55,7 @@ The widget is designed to stay small, remain above other applications, and provi
 ├── main.js            Electron main process and local app server
 ├── preload.js         Secure renderer-to-main IPC bridge
 ├── package.json       Scripts and dependencies
+├── icon.ico           Application icon (◒) used by Sonora.exe
 ├── package-lock.json  Locked dependency versions
 └── release-packaged/  Generated Windows application output
 ```
@@ -72,7 +76,7 @@ Local audio playback does not require an internet connection after the files hav
 Open PowerShell in the project folder:
 
 ```powershell
-cd C:\Users\ASUS\Desktop\Babe
+cd "C:\Users\ASUS\Desktop\Sonora Music Player"
 ```
 
 Install dependencies:
@@ -150,7 +154,7 @@ Click the pin icon in the header:
 2. Click **Local audio**.
 3. Select one or more audio files.
 
-You can also drag audio files onto the **Drop audio files here to add them** area.
+You can also drag audio files from File Explorer and drop them anywhere on the widget (or onto the **Drop audio files here to add them** area). Files that are not audio are ignored.
 
 Supported files depend on the audio formats supported by the browser engine, including common formats such as:
 
@@ -172,9 +176,16 @@ Supported URL styles include:
 
 - `https://www.youtube.com/watch?v=VIDEO_ID`
 - `https://youtu.be/VIDEO_ID`
+- `https://www.youtube.com/playlist?list=PLAYLIST_ID`
 - YouTube Shorts links
 - YouTube embed links
 - YouTube live links
+
+### 5a. Play a YouTube playlist
+
+Paste a playlist link (or a video link containing `list=PLAYLIST_ID`) and the whole playlist is added as one library entry. When it plays, **Next** and **Previous** move through the videos in the playlist first, then on to the next library entry. The track title and its position (for example `2/25`) are shown in the player. Shuffle and Repeat also apply to the playlist.
+
+Auto-generated YouTube Mix playlists (`list=RD...`) cannot be embedded, so for those links only the single video is added. Private playlists cannot be played.
 
 Sonora retrieves the YouTube title and channel/artist name. YouTube playback runs through an invisible embedded player, so no external browser window opens and no video is shown in the widget.
 
@@ -182,24 +193,42 @@ Sonora retrieves the YouTube title and channel/artist name. YouTube playback run
 
 1. Open the library.
 2. Click any song in the song list.
-3. The selected song becomes the current track.
-4. Click the play button to start it.
+3. The selected song becomes the current track and starts playing.
+4. Click the active song again to pause or resume it.
 
 ### 7. Use playback controls
 
-- **Play/Pause**: Start or pause the current track
-- **Previous**: Go to the previous song
-- **Next**: Go to the next song
-- **Shuffle**: Select songs in random order
-- **Repeat**: Replay the current song after it ends
+- **Play/Pause**: Start or pause the current track. The icon always matches the real state.
+- **Previous / Next**: Move to the previous or next song (wrapping around at the ends). With Shuffle on, Previous returns to the songs played before.
+- **Shuffle**: Plays songs in random order without repeating one until all have played. The button is highlighted when on.
+- **Repeat**: Click to cycle through three states:
+  - Off: playback stops after the last song
+  - Repeat all (highlighted): the library loops
+  - Repeat one (highlighted, marked `1`): the current song replays
 - **Seek bar**: Jump to another position in the track
 - **Volume slider**: Change playback volume
 - **Speaker button**: Mute or restore the previous volume
-- **Favorite**: Toggle the favorite visual state
+- **Favorite (heart)**: Mark the current song as a favorite
 
 When music is playing, the cover changes into a rotating disc. The disc stops when playback is paused.
 
-### 8. Remove a song
+### 8. Open and close the library
+
+Click the library button in the header to open the library. Click it again (or the `×` in the library heading) to close it. The button is highlighted while the library is open.
+
+### 9. Favorite songs
+
+Click the heart in the player, or the heart next to a song in the library. Favorite songs are highlighted with a pink marker and a filled heart, and move to the top of the library. Click the heart again to remove the favorite. Favorites are saved with the library.
+
+### 10. Rename a song
+
+1. Open the library.
+2. Click the pencil icon next to a song.
+3. Type the new name and press **Enter** (or click elsewhere) to save. Press **Esc** to cancel.
+
+Renamed YouTube songs keep their custom name when metadata is refreshed.
+
+### 11. Remove a song
 
 1. Open the library.
 2. Find the song in the list.
@@ -207,7 +236,7 @@ When music is playing, the cover changes into a rotating disc. The disc stops wh
 
 The song is removed from the current library and persistent storage.
 
-### 9. Save the library as JSON
+### 12. Save the library as JSON
 
 1. Click the save icon in the widget header, or open the library and click **Export JSON**.
 2. Choose a location in the save dialog.
@@ -220,8 +249,9 @@ The JSON file contains the library entries, including:
 - Song type
 - YouTube URL or local audio data
 - Metadata information
+- Favorite status, custom names, and YouTube playlist IDs
 
-### 10. Import a JSON library
+### 13. Import a JSON library
 
 1. Open the library.
 2. Click **Import JSON**.
@@ -230,11 +260,17 @@ The JSON file contains the library entries, including:
 
 Only valid Sonora song entries are accepted. Invalid JSON or unsupported entries show an error message.
 
-### 11. Close and reopen the widget
+### 14. Close and reopen the widget
 
 Click the `×` button in the header to close the widget. Reopen it with the executable or `npm start`.
 
 The previous library is restored automatically. Local audio and YouTube songs remain available for playback.
+
+### 15. Automatic light and dark appearance
+
+Sonora measures the brightness of the desktop behind the widget about every 1.5 seconds. Over a bright background it uses dark text and icons on a light glass panel. Over a dark background it switches to light text and icons on a dark glass panel. A small delay and threshold gap prevent flickering on mid-tone backgrounds. Move the widget over a different window or wallpaper and the colors follow automatically.
+
+To measure only the desktop (and not itself), the widget is excluded from screen capture. As a result, it will not appear in screenshots or screen recordings.
 
 ## Data and privacy
 

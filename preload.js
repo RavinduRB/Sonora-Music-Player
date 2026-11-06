@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('sonora', {
   saveLibrary: (library) => ipcRenderer.invoke('sonora:save-library', library),
   setAlwaysOnTop: (enabled) => ipcRenderer.send('sonora:always-on-top', enabled),
   setWidgetRect: (rect) => ipcRenderer.send('sonora:widget-rect', rect),
+  onTheme: (callback) => ipcRenderer.on('sonora:theme', (_event, theme) => callback(theme)),
   resize: (height) => ipcRenderer.send('sonora:resize', height)
 });

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, desktopCapturer } = require('electron');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -67,6 +67,7 @@ async function createWindow() {
     }
   });
 
+  mainWindow.setContentProtection(true);
   mainWindow.loadURL(`${localUrl}/index.html`);
   mainWindow.once('ready-to-show', () => {
     positionTopRight();
@@ -176,6 +177,61 @@ setInterval(() => {
     mainWindow.setIgnoreMouseEvents(mouseIgnored, { forward: true });
   }
 }, 50);
+
+// Picks a light or dark UI by measuring the brightness of the desktop behind the widget.
+// The window is excluded from screen capture (see createWindow) so only the desktop is measured.
+let currentTheme = null;
+let pendingTheme = null;
+let sampling = false;
+const THEME_INTERVAL_MS = 1500;
+
+function sendTheme(theme) {
+  if (theme === currentTheme || !mainWindow || mainWindow.isDestroyed()) return;
+  currentTheme = theme;
+  mainWindow.webContents.send('sonora:theme', theme);
+}
+
+async function sampleBackground() {
+  if (sampling || !mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible() || mainWindow.isMinimized() || !widgetRect) return;
+  sampling = true;
+  try {
+    const bounds = mainWindow.getContentBounds();
+    const display = screen.getDisplayMatching(bounds);
+    const thumbWidth = 480;
+    const thumbHeight = Math.max(1, Math.round(thumbWidth * display.bounds.height / display.bounds.width));
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: thumbWidth, height: thumbHeight } });
+    const source = sources.find((item) => item.display_id === String(display.id)) || sources[0];
+    if (!source || source.thumbnail.isEmpty()) return;
+    const { width, height } = source.thumbnail.getSize();
+    const scale = width / display.bounds.width;
+    const left = Math.max(0, Math.floor((bounds.x + widgetRect.x - display.bounds.x) * scale));
+    const top = Math.max(0, Math.floor((bounds.y + widgetRect.y - display.bounds.y) * scale));
+    const right = Math.min(width, Math.ceil((bounds.x + widgetRect.x + widgetRect.width - display.bounds.x) * scale));
+    const bottom = Math.min(height, Math.ceil((bounds.y + widgetRect.y + widgetRect.height - display.bounds.y) * scale));
+    if (right <= left || bottom <= top) return;
+    const pixels = source.thumbnail.toBitmap(); // BGRA
+    let total = 0;
+    let count = 0;
+    for (let y = top; y < bottom; y++) {
+      for (let x = left; x < right; x++) {
+        const i = (y * width + x) * 4;
+        total += 0.2126 * pixels[i + 2] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i];
+        count++;
+      }
+    }
+    const luminance = total / count / 255;
+    // Hysteresis keeps the theme from flickering when the background is mid-tone
+    const next = currentTheme === 'dark' ? (luminance > 0.58 ? 'light' : 'dark') : (luminance < 0.46 ? 'dark' : 'light');
+    if (next === currentTheme) pendingTheme = null;
+    else if (currentTheme === null || pendingTheme === next) { pendingTheme = null; sendTheme(next); }
+    else pendingTheme = next;
+  } catch {
+    // Capture can fail on a locked screen; keep the current theme
+  } finally {
+    sampling = false;
+  }
+}
+setInterval(sampleBackground, THEME_INTERVAL_MS);
 ipcMain.on('sonora:resize', (_event, height) => {
   if (!mainWindow || !Number.isInteger(height)) return;
   const [width, currentHeight] = mainWindow.getSize();

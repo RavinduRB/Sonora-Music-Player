@@ -16,7 +16,9 @@ const ICONS = {
   repeatOne: svg(`<path ${stroke} d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/><text x="12" y="15.4" text-anchor="middle" font-size="9" font-weight="700" fill="currentColor" font-family="DM Sans, sans-serif">1</text>`, 15),
   heart: svg(`<path ${stroke} d="M12 20.5s-7.6-4.6-9.4-9.3C1.4 8 3.2 4.8 6.6 4.8c2 0 3.4 1 5.4 3 2-2 3.4-3 5.4-3 3.4 0 5.2 3.2 4 6.4-1.8 4.7-9.4 9.3-9.4 9.3z"/>`, 16),
   heartFilled: svg('<path fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 20.5s-7.6-4.6-9.4-9.3C1.4 8 3.2 4.8 6.6 4.8c2 0 3.4 1 5.4 3 2-2 3.4-3 5.4-3 3.4 0 5.2 3.2 4 6.4-1.8 4.7-9.4 9.3-9.4 9.3z"/>', 16),
-  edit: svg(`<path ${stroke} d="M4 20h4L19.5 8.5a1.9 1.9 0 0 0 0-2.7l-1.3-1.3a1.9 1.9 0 0 0-2.7 0L4 16v4zM13.5 6.5l4 4"/>`, 12)
+  edit: svg(`<path ${stroke} d="M4 20h4L19.5 8.5a1.9 1.9 0 0 0 0-2.7l-1.3-1.3a1.9 1.9 0 0 0-2.7 0L4 16v4zM13.5 6.5l4 4"/>`, 12),
+  volume: svg(`<path fill="currentColor" d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path ${stroke} d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>`, 13),
+  muted: svg(`<path fill="currentColor" d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path ${stroke} d="m16 9.5 5 5M21 9.5l-5 5"/>`, 13)
 };
 
 let songs = normalizeSongs(loadSongs());
@@ -532,7 +534,7 @@ function applyVolume(value) {
   $('#volumeBar').value = volumeLevel;
   $('#volumeValue').textContent = volumeLevel;
   muted = volumeLevel === 0;
-  $('#volumeButton').textContent = muted ? '🔇' : '🔊';
+  $('#volumeButton').innerHTML = muted ? ICONS.muted : ICONS.volume;
   $('#volumeButton').title = muted ? 'Unmute' : 'Mute';
   $('#volumeButton').setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
 }
@@ -685,3 +687,4 @@ window.sonora?.loadLibrary().then((savedSongs) => {
   songs.filter((song) => song.type === 'youtube' && !song.metadataLoaded).forEach(enrichYoutubeSong);
 }).catch(() => showToast('Could not restore the saved library'));
 trackWidgetBounds();
+window.sonora?.onTheme((theme) => { document.documentElement.dataset.theme = theme; });
