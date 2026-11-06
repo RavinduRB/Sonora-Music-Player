@@ -155,10 +155,27 @@ ipcMain.on('sonora:always-on-top', (_event, enabled) => {
   if (!mainWindow || typeof enabled !== 'boolean') return;
   mainWindow.setAlwaysOnTop(enabled);
 });
-ipcMain.on('sonora:mouse-through', (_event, enabled) => {
-  if (!mainWindow || typeof enabled !== 'boolean') return;
-  mainWindow.setIgnoreMouseEvents(enabled, { forward: true });
+// The transparent area lets clicks through. This is polled from the cursor position because
+// no mouse events reach a click-through window while a file is being dragged over it.
+let widgetRect = null;
+let mouseIgnored = false;
+ipcMain.on('sonora:widget-rect', (_event, rect) => {
+  if (!rect || !['x', 'y', 'width', 'height'].every((key) => Number.isFinite(rect[key]))) return;
+  widgetRect = rect;
 });
+setInterval(() => {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible() || !widgetRect) return;
+  const cursor = screen.getCursorScreenPoint();
+  const bounds = mainWindow.getContentBounds();
+  const x = cursor.x - bounds.x;
+  const y = cursor.y - bounds.y;
+  const inside = x >= widgetRect.x && x <= widgetRect.x + widgetRect.width
+    && y >= widgetRect.y && y <= widgetRect.y + widgetRect.height;
+  if (mouseIgnored === inside) {
+    mouseIgnored = !inside;
+    mainWindow.setIgnoreMouseEvents(mouseIgnored, { forward: true });
+  }
+}, 50);
 ipcMain.on('sonora:resize', (_event, height) => {
   if (!mainWindow || !Number.isInteger(height)) return;
   const [width, currentHeight] = mainWindow.getSize();

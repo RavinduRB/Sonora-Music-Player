@@ -2,21 +2,51 @@ const audio = document.querySelector('#audio');
 const $ = (selector) => document.querySelector(selector);
 const widget = $('.widget');
 const STORAGE_KEY = 'sonora-library-v1';
-let songs = loadSongs();
+const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'weba', 'webm'];
+
+const svg = (body, size = 15, extra = '') => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true" ${extra}>${body}</svg>`;
+const stroke = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+const ICONS = {
+  play: svg('<path fill="currentColor" d="M8 5.6v12.8a1 1 0 0 0 1.5.86l10.4-6.4a1 1 0 0 0 0-1.72L9.5 4.74A1 1 0 0 0 8 5.6z"/>', 14),
+  pause: svg('<rect fill="currentColor" x="6.5" y="5" width="4" height="14" rx="1.3"/><rect fill="currentColor" x="13.5" y="5" width="4" height="14" rx="1.3"/>', 14),
+  previous: svg('<rect fill="currentColor" x="5" y="5" width="2.6" height="14" rx="1"/><path fill="currentColor" d="M19 6.2v11.6a.9.9 0 0 1-1.4.76L9.4 12.76a.9.9 0 0 1 0-1.52l8.2-5.8A.9.9 0 0 1 19 6.2z"/>', 15),
+  next: svg('<rect fill="currentColor" x="16.4" y="5" width="2.6" height="14" rx="1"/><path fill="currentColor" d="M5 6.2v11.6a.9.9 0 0 0 1.4.76l8.2-5.8a.9.9 0 0 0 0-1.52L6.4 5.44A.9.9 0 0 0 5 6.2z"/>', 15),
+  shuffle: svg(`<path ${stroke} d="M16 4h4v4M4 20 20 4M20 16v4h-4M4 4l5 5M15 15l5 5"/>`, 15),
+  repeat: svg(`<path ${stroke} d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/>`, 15),
+  repeatOne: svg(`<path ${stroke} d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/><text x="12" y="15.4" text-anchor="middle" font-size="9" font-weight="700" fill="currentColor" font-family="DM Sans, sans-serif">1</text>`, 15),
+  heart: svg(`<path ${stroke} d="M12 20.5s-7.6-4.6-9.4-9.3C1.4 8 3.2 4.8 6.6 4.8c2 0 3.4 1 5.4 3 2-2 3.4-3 5.4-3 3.4 0 5.2 3.2 4 6.4-1.8 4.7-9.4 9.3-9.4 9.3z"/>`, 16),
+  heartFilled: svg('<path fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 20.5s-7.6-4.6-9.4-9.3C1.4 8 3.2 4.8 6.6 4.8c2 0 3.4 1 5.4 3 2-2 3.4-3 5.4-3 3.4 0 5.2 3.2 4 6.4-1.8 4.7-9.4 9.3-9.4 9.3z"/>', 16),
+  edit: svg(`<path ${stroke} d="M4 20h4L19.5 8.5a1.9 1.9 0 0 0 0-2.7l-1.3-1.3a1.9 1.9 0 0 0-2.7 0L4 16v4zM13.5 6.5l4 4"/>`, 12)
+};
+
+let songs = normalizeSongs(loadSongs());
 let activeIndex = -1;
 let shuffled = false;
-let repeating = false;
-let favorite = false;
+let repeatMode = 'off';
 let pinned = true;
 let youtubePlayer = null;
 let youtubeReady = null;
 let youtubeTimer = null;
+let pendingPlaylistSetup = false;
 let volumeLevel = 78;
 let muted = false;
+let loadToken = 0;
+let playHistory = [];
+let shuffleSeen = new Set();
+let editingId = null;
+let editingValue = '';
+let rendering = false;
+
+const activeSong = () => songs[activeIndex];
+const isPlaylist = (song) => song?.type === 'youtube' && Boolean(song.playlistId);
+function newId() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 
 function setPlayingState(playing) {
   $('#cover').classList.toggle('playing', playing);
-  $('#playButton').textContent = playing ? 'Ⅱ' : '▶';
+  const button = $('#playButton');
+  button.innerHTML = playing ? ICONS.pause : ICONS.play;
+  button.title = playing ? 'Pause' : 'Play';
+  button.setAttribute('aria-label', button.title);
 }
 
 function prepareYoutubePlayer() {
@@ -32,16 +62,11 @@ function prepareYoutubePlayer() {
             youtubePlayer.setVolume(volumeLevel);
             resolve(youtubePlayer);
           },
-          onStateChange: (event) => {
-            if (event.data === window.YT.PlayerState.PLAYING) {
-              setPlayingState(true);
-              startYoutubeTimer();
-            } else if (event.data === window.YT.PlayerState.PAUSED) {
-              setPlayingState(false);
-            } else if (event.data === window.YT.PlayerState.ENDED) {
-              setPlayingState(false);
-              repeating ? setActive(activeIndex, true) : nextSong();
-            }
+          onStateChange: handleYoutubeState,
+          onError: () => {
+            if (activeSong()?.type !== 'youtube') return;
+            setPlayingState(false);
+            showToast('This video cannot be played in the widget');
           }
         }
       });
@@ -59,6 +84,44 @@ function prepareYoutubePlayer() {
   return youtubeReady;
 }
 
+function handleYoutubeState(event) {
+  if (activeSong()?.type !== 'youtube') return;
+  const states = window.YT.PlayerState;
+  if (event.data === states.PLAYING) {
+    setPlayingState(true);
+    startYoutubeTimer();
+    applyPlaylistSettings();
+    syncPlaylistTrack();
+  } else if (event.data === states.PAUSED) {
+    setPlayingState(false);
+  } else if (event.data === states.CUED) {
+    applyPlaylistSettings();
+    syncPlaylistTrack();
+  } else if (event.data === states.ENDED) {
+    setPlayingState(false);
+    handleEnded();
+  }
+}
+
+function applyPlaylistSettings() {
+  if (!youtubePlayer || !isPlaylist(activeSong())) return;
+  youtubePlayer.setLoop(repeatMode !== 'off');
+  if (pendingPlaylistSetup) {
+    pendingPlaylistSetup = false;
+    if (shuffled) youtubePlayer.setShuffle(true);
+  }
+}
+
+function syncPlaylistTrack() {
+  const song = activeSong();
+  if (!youtubePlayer || !isPlaylist(song)) return;
+  const title = youtubePlayer.getVideoData?.().title;
+  const total = youtubePlayer.getPlaylist?.()?.length || 0;
+  const position = youtubePlayer.getPlaylistIndex?.();
+  if (title) $('#trackTitle').textContent = title;
+  $('#trackArtist').textContent = total && position >= 0 ? `${song.title} · ${position + 1}/${total}` : song.title;
+}
+
 function stopYoutube() {
   if (youtubePlayer) youtubePlayer.stopVideo();
   clearInterval(youtubeTimer);
@@ -68,7 +131,7 @@ function stopYoutube() {
 function startYoutubeTimer() {
   clearInterval(youtubeTimer);
   youtubeTimer = setInterval(() => {
-    if (!youtubePlayer || activeIndex < 0 || songs[activeIndex]?.type !== 'youtube') return;
+    if (!youtubePlayer || activeSong()?.type !== 'youtube') return;
     const current = youtubePlayer.getCurrentTime();
     const duration = youtubePlayer.getDuration();
     $('#currentTime').textContent = formatTime(current);
@@ -81,16 +144,31 @@ function loadSongs() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
   catch { return []; }
 }
+function normalizeSongs(list) {
+  const seen = new Set();
+  const cleaned = (Array.isArray(list) ? list : []).filter((song) => song && song.title && ['local', 'youtube'].includes(song.type)).map((song) => {
+    const id = song.id && !seen.has(song.id) ? song.id : newId();
+    seen.add(id);
+    return { ...song, id, favorite: Boolean(song.favorite) };
+  });
+  return [...cleaned.filter((song) => song.favorite), ...cleaned.filter((song) => !song.favorite)];
+}
+function sortFavorites() {
+  const currentId = activeSong()?.id;
+  songs = [...songs.filter((song) => song.favorite), ...songs.filter((song) => !song.favorite)];
+  activeIndex = currentId ? songs.findIndex((song) => song.id === currentId) : -1;
+}
 function saveSongs() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
+  sortFavorites();
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(songs)); } catch { /* the file library below is the durable copy */ }
   renderSongs();
   if (window.sonora?.persistLibrary) {
     window.sonora.persistLibrary(serializedSongs()).catch(() => showToast('Could not persist the library'));
   }
 }
 function serializedSongs() {
-  return songs.map(({ id, title, artist, type, url, thumbnail, metadataLoaded }) => ({
-    id, title, artist, type, url, thumbnail, metadataLoaded
+  return songs.map(({ id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, favorite, customTitle }) => ({
+    id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, favorite, customTitle
   }));
 }
 async function saveLibraryFile() {
@@ -125,25 +203,107 @@ function youtubeId(url) {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.replace(/^www\./, '');
-    if (host === 'youtu.be') return parsed.pathname.slice(1).split('/')[0];
-    if (host === 'youtube.com' || host === 'm.youtube.com') {
+    if (host === 'youtu.be') return parsed.pathname.slice(1).split('/')[0] || null;
+    if (['youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(host)) {
       return parsed.searchParams.get('v') || parsed.pathname.match(/\/(?:shorts|embed|live)\/([^/?]+)/)?.[1] || null;
     }
   } catch { /* invalid URL is handled by the caller */ }
   return null;
 }
+function youtubePlaylistId(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (!['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'].includes(host)) return null;
+    const list = parsed.searchParams.get('list');
+    // Auto-generated mixes (RD...) cannot be embedded as playlists
+    return list && /^[\w-]+$/.test(list) && !list.startsWith('RD') ? list : null;
+  } catch { return null; }
+}
+const subtitleFor = (song) => song.artist || (song.type === 'youtube' ? 'YouTube' : 'Local audio');
+
 function renderSongs() {
+  rendering = true;
+  const list = $('#songList');
+  const focused = document.activeElement?.classList.contains('rename-input') ? document.activeElement : null;
+  if (focused) editingValue = focused.value;
+  const selection = focused ? [focused.selectionStart, focused.selectionEnd] : null;
   $('#songCount').textContent = songs.length;
-  $('#songList').innerHTML = songs.map((song, index) => `
-    <li class="song-item ${index === activeIndex ? 'active' : ''}" data-index="${index}">
+  list.innerHTML = songs.map((song, index) => {
+    const title = song.id === editingId
+      ? `<input class="rename-input" value="${escapeHtml(editingValue)}" maxlength="120" aria-label="Song name" />`
+      : `<strong>${escapeHtml(song.title)}</strong>`;
+    const subtitle = song.playlistId ? `Playlist · ${subtitleFor(song)}` : subtitleFor(song);
+    return `
+    <li class="song-item ${index === activeIndex ? 'active' : ''} ${song.favorite ? 'is-favorite' : ''}" data-index="${index}">
       <span class="song-dot"></span>
-      <span class="song-info"><strong>${escapeHtml(song.title)}</strong><small>${escapeHtml(song.artist || (song.type === 'youtube' ? 'YouTube' : 'Local audio'))}</small></span>
-      <button class="remove-song" data-remove="${index}" aria-label="Remove ${escapeHtml(song.title)}">×</button>
-    </li>`).join('');
+      <span class="song-info">${title}<small>${escapeHtml(subtitle)}</small></span>
+      <button class="item-action fav-song ${song.favorite ? 'on' : ''}" data-favorite="${index}" title="${song.favorite ? 'Remove from favorites' : 'Add to favorites'}" aria-label="Toggle favorite for ${escapeHtml(song.title)}">${song.favorite ? ICONS.heartFilled : ICONS.heart}</button>
+      <button class="item-action rename-song" data-rename="${index}" title="Rename" aria-label="Rename ${escapeHtml(song.title)}">${ICONS.edit}</button>
+      <button class="remove-song" data-remove="${index}" title="Remove" aria-label="Remove ${escapeHtml(song.title)}">×</button>
+    </li>`;
+  }).join('');
+  const input = list.querySelector('.rename-input');
+  if (input && focused) {
+    input.focus();
+    input.setSelectionRange(selection[0], selection[1]);
+  }
+  rendering = false;
+  refreshFavoriteButton();
 }
 function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 }
+
+function startRename(index) {
+  const song = songs[index]; if (!song) return;
+  editingId = song.id; editingValue = song.title;
+  renderSongs();
+  const input = $('.rename-input');
+  input.focus(); input.select();
+}
+function commitRename() {
+  if (editingId === null) return;
+  const song = songs.find((item) => item.id === editingId);
+  const title = editingValue.trim();
+  editingId = null;
+  if (song && title && title !== song.title) {
+    song.title = title;
+    song.customTitle = true;
+    saveSongs();
+    if (song === activeSong()) { showTrack(song); syncPlaylistTrack(); }
+    showToast('Song renamed');
+  } else renderSongs();
+}
+function cancelRename() {
+  editingId = null;
+  renderSongs();
+}
+
+function showTrack(song) {
+  $('#trackTitle').textContent = song ? song.title : 'Your quiet space';
+  $('#trackArtist').textContent = song ? subtitleFor(song) : 'Add a song to begin';
+  $('#sourceLabel').textContent = !song ? 'READY TO PLAY'
+    : song.type === 'local' ? 'LOCAL AUDIO'
+      : isPlaylist(song) ? 'YOUTUBE PLAYLIST' : 'YOUTUBE LINK';
+  refreshFavoriteButton();
+}
+function refreshFavoriteButton() {
+  const button = $('#favoriteButton');
+  const on = Boolean(activeSong()?.favorite);
+  button.innerHTML = on ? ICONS.heartFilled : ICONS.heart;
+  button.classList.toggle('on', on);
+  button.title = on ? 'Remove from favorites' : 'Add to favorites';
+  button.setAttribute('aria-label', button.title);
+}
+function toggleFavorite(index) {
+  const song = songs[index]; if (!song) return;
+  song.favorite = !song.favorite;
+  saveSongs();
+  if (song.favorite) $('#songList').scrollTop = 0;
+  showToast(song.favorite ? 'Added to favorites' : 'Removed from favorites');
+}
+
 async function enrichYoutubeSong(song) {
   if (song.type !== 'youtube' || song.metadataLoaded) return;
   try {
@@ -158,49 +318,110 @@ async function enrichYoutubeSong(song) {
           thumbnail: data.thumbnail_url
         }));
       });
-    song.title = metadata.title || song.title;
+    if (!song.customTitle) song.title = metadata.title || song.title;
     song.artist = metadata.artist || song.artist || 'YouTube';
     song.thumbnail = metadata.thumbnail || '';
     song.metadataLoaded = true;
     saveSongs();
-    if (songs[activeIndex] === song) {
-      $('#trackTitle').textContent = song.title;
-      $('#trackArtist').textContent = song.artist;
-      renderSongs();
-    }
+    if (song === activeSong()) { showTrack(song); syncPlaylistTrack(); }
   } catch {
-    if (songs[activeIndex] === song) showToast('Could not load YouTube song details');
+    if (song === activeSong()) showToast('Could not load YouTube song details');
   }
 }
-function setActive(index, autoplay = false) {
+
+function setActive(index, autoplay = false, { back = false } = {}) {
   const song = songs[index]; if (!song) return;
+  const previous = activeSong();
+  if (!back && previous && previous.id !== song.id) {
+    playHistory.push(previous.id);
+    if (playHistory.length > 100) playHistory.shift();
+  }
+  shuffleSeen.add(song.id);
   activeIndex = index; audio.pause(); stopYoutube();
   setPlayingState(false);
+  const token = ++loadToken;
   if (song.type === 'local') {
-    audio.src = song.url; $('#sourceLabel').textContent = 'LOCAL AUDIO';
+    audio.src = song.url;
   } else {
-    audio.removeAttribute('src'); $('#sourceLabel').textContent = 'YOUTUBE LINK';
+    audio.removeAttribute('src'); audio.load();
     prepareYoutubePlayer().then((player) => {
-      player.cueVideoById(youtubeId(song.url) || song.id);
-      if (autoplay) {
-        player.playVideo();
-        startYoutubeTimer();
-      }
-    }).catch(() => showToast('YouTube audio could not load'));
+      if (token !== loadToken) return;
+      pendingPlaylistSetup = isPlaylist(song);
+      const method = autoplay ? 'load' : 'cue';
+      if (isPlaylist(song)) player[`${method}Playlist`]({ listType: 'playlist', list: song.playlistId, index: 0 });
+      else player[`${method}VideoById`](youtubeId(song.url) || song.id);
+      if (autoplay) startYoutubeTimer();
+    }).catch(() => { setPlayingState(false); showToast('YouTube audio could not load'); });
   }
-  $('#trackTitle').textContent = song.title; $('#trackArtist').textContent = song.artist || (song.type === 'youtube' ? 'YouTube' : 'Local audio');
+  showTrack(song);
   if (song.type === 'youtube') enrichYoutubeSong(song);
   $('#cover').style.background = song.type === 'youtube' ? 'linear-gradient(135deg,#83a6c8,#b5e3d8)' : 'linear-gradient(135deg,#6e9dcc,#c5e8dc)';
   $('#seekBar').value = 0; $('#currentTime').textContent = '0:00'; $('#duration').textContent = song.type === 'youtube' ? '—:——' : '0:00';
   renderSongs();
-  if (autoplay && song.type === 'local') audio.play().catch(() => showToast('Press play to start audio'));
+  $('.song-item.active')?.scrollIntoView({ block: 'nearest' });
+  if (autoplay && song.type === 'local') audio.play().catch(() => showToast('This audio file cannot be played'));
   if (autoplay && song.type === 'youtube') setPlayingState(true);
 }
-function nextSong(direction = 1) {
-  if (!songs.length) return showToast('Add a song first');
-  const index = shuffled ? Math.floor(Math.random() * songs.length) : (activeIndex + direction + songs.length) % songs.length;
-  setActive(index, true);
+
+function clearActive() {
+  loadToken++;
+  activeIndex = -1;
+  audio.pause(); audio.removeAttribute('src'); audio.load();
+  stopYoutube();
+  setPlayingState(false);
+  showTrack(null);
+  $('#seekBar').value = 0; $('#currentTime').textContent = '0:00'; $('#duration').textContent = '0:00';
 }
+
+function stopPlayback() {
+  setPlayingState(false);
+  if (activeSong()?.type === 'youtube') { clearInterval(youtubeTimer); youtubePlayer?.pauseVideo(); }
+}
+
+// Moves inside a YouTube playlist first; returns false when the library should advance instead
+function stepWithinPlaylist(direction) {
+  if (!youtubePlayer || !isPlaylist(activeSong())) return false;
+  const total = youtubePlayer.getPlaylist?.()?.length || 0;
+  const position = youtubePlayer.getPlaylistIndex?.();
+  if (!total || position == null || position < 0) return false;
+  if (direction > 0 && position < total - 1) { youtubePlayer.nextVideo(); return true; }
+  if (direction < 0 && position > 0) { youtubePlayer.previousVideo(); return true; }
+  return false;
+}
+
+function changeSong(direction = 1, auto = false) {
+  if (!songs.length) return showToast('Add a song first');
+  if (activeIndex < 0) return setActive(0, true);
+  if (!auto && stepWithinPlaylist(direction)) return;
+  const count = songs.length;
+  if (direction < 0) {
+    if (shuffled) {
+      while (playHistory.length) {
+        const index = songs.findIndex((song) => song.id === playHistory.pop());
+        if (index >= 0) return setActive(index, true, { back: true });
+      }
+    }
+    return setActive((activeIndex - 1 + count) % count, true);
+  }
+  if (shuffled) {
+    let candidates = songs.map((_, index) => index).filter((index) => !shuffleSeen.has(songs[index].id));
+    if (!candidates.length) {
+      if (auto && repeatMode === 'off') return stopPlayback();
+      shuffleSeen = new Set([activeSong().id]);
+      candidates = songs.map((_, index) => index).filter((index) => index !== activeIndex);
+      if (!candidates.length) candidates = [activeIndex];
+    }
+    return setActive(candidates[Math.floor(Math.random() * candidates.length)], true);
+  }
+  if (activeIndex + 1 >= count && auto && repeatMode === 'off') return stopPlayback();
+  setActive((activeIndex + 1) % count, true);
+}
+
+function handleEnded() {
+  if (repeatMode === 'one' && !isPlaylist(activeSong())) return setActive(activeIndex, true);
+  changeSong(1, true);
+}
+
 function fileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -209,15 +430,20 @@ function fileAsDataUrl(file) {
     reader.readAsDataURL(file);
   });
 }
+function isAudioFile(file) {
+  return file.type.startsWith('audio/') || AUDIO_EXTENSIONS.includes(file.name.split('.').pop().toLowerCase());
+}
 async function addLocalFiles(files) {
-  const audioFiles = [...files].filter((file) => file.type.startsWith('audio/'));
+  const audioFiles = [...files].filter(isAudioFile);
+  if (!audioFiles.length) return showToast('Drop audio files only');
   try {
     const imported = await Promise.all(audioFiles.map(async (file) => ({
-      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${file.name}`,
+      id: newId(),
       title: titleFromFile(file.name),
       artist: 'Local audio',
       type: 'local',
-      url: await fileAsDataUrl(file)
+      url: await fileAsDataUrl(file),
+      favorite: false
     })));
     songs.push(...imported);
     saveSongs();
@@ -230,22 +456,28 @@ async function addLocalFiles(files) {
 function addYoutube() {
   const url = $('#youtubeInput').value.trim();
   if (!url) return;
+  const playlistId = youtubePlaylistId(url);
   const id = youtubeId(url);
-  if (!id) return showToast('Enter a valid YouTube URL');
-  const song = { id, title: `YouTube · ${id}`, artist: 'YouTube', type: 'youtube', url };
+  if (!playlistId && !id) return showToast('Enter a valid YouTube video or playlist URL');
+  const song = playlistId
+    ? { id: newId(), title: 'YouTube playlist', artist: 'YouTube', type: 'youtube', playlistId, url: `https://www.youtube.com/playlist?list=${playlistId}`, favorite: false }
+    : { id: newId(), title: `YouTube · ${id}`, artist: 'YouTube', type: 'youtube', url, favorite: false };
   songs.push(song);
   saveSongs(); if (activeIndex < 0) setActive(0);
   enrichYoutubeSong(song);
   $('#youtubeInput').value = '';
   $('#youtubeDialog').classList.remove('open');
-  showToast('YouTube song added');
+  showToast(playlistId ? 'YouTube playlist added' : 'YouTube song added');
 }
 
-$('#playButton').addEventListener('click', () => {
-  if (activeIndex < 0) return songs.length ? setActive(0, true) : showToast('Add a song first');
-  if (songs[activeIndex].type === 'youtube') {
+function togglePlayback() {
+  const song = activeSong();
+  if (!song) return songs.length ? setActive(0, true) : showToast('Add a song first');
+  if (song.type === 'youtube') {
     prepareYoutubePlayer().then((player) => {
-      if (player.getPlayerState() === window.YT.PlayerState.PLAYING) {
+      const states = window.YT.PlayerState;
+      const state = player.getPlayerState();
+      if (state === states.PLAYING || state === states.BUFFERING) {
         player.pauseVideo();
         setPlayingState(false);
       } else {
@@ -257,14 +489,39 @@ $('#playButton').addEventListener('click', () => {
     return;
   }
   if (audio.paused) audio.play().catch(() => showToast('This audio file cannot be played')); else audio.pause();
-});
-audio.addEventListener('play', () => setPlayingState(true));
-audio.addEventListener('pause', () => setPlayingState(false));
+}
+
+function setLibraryOpen(open) {
+  widget.classList.toggle('library-open', open);
+  const button = $('#libraryButton');
+  button.classList.toggle('active', open);
+  button.title = open ? 'Close library' : 'Open library';
+  button.setAttribute('aria-label', button.title);
+  button.setAttribute('aria-expanded', String(open));
+  window.sonora?.resize(open ? 660 : 150);
+}
+
+function updateModeButtons() {
+  const shuffle = $('#shuffleButton');
+  shuffle.classList.toggle('active', shuffled);
+  shuffle.title = shuffled ? 'Shuffle: on' : 'Shuffle: off';
+  shuffle.setAttribute('aria-pressed', String(shuffled));
+  const repeat = $('#repeatButton');
+  repeat.innerHTML = repeatMode === 'one' ? ICONS.repeatOne : ICONS.repeat;
+  repeat.classList.toggle('active', repeatMode !== 'off');
+  repeat.title = { off: 'Repeat: off', all: 'Repeat: all songs', one: 'Repeat: current song' }[repeatMode];
+  repeat.setAttribute('aria-label', repeat.title);
+}
+
+$('#playButton').addEventListener('click', togglePlayback);
+audio.addEventListener('play', () => { if (activeSong()?.type === 'local') setPlayingState(true); });
+audio.addEventListener('pause', () => { if (activeSong()?.type === 'local') setPlayingState(false); });
+audio.addEventListener('error', () => { if (activeSong()?.type === 'local' && audio.getAttribute('src')) showToast('This audio file cannot be played'); });
 audio.addEventListener('timeupdate', () => { $('#seekBar').value = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0; $('#currentTime').textContent = formatTime(audio.currentTime); });
 audio.addEventListener('loadedmetadata', () => { $('#duration').textContent = formatTime(audio.duration); });
-audio.addEventListener('ended', () => repeating ? setActive(activeIndex, true) : nextSong());
+audio.addEventListener('ended', () => { if (activeSong()?.type === 'local') handleEnded(); });
 $('#seekBar').addEventListener('input', (event) => {
-  if (activeIndex >= 0 && songs[activeIndex].type === 'youtube' && youtubePlayer) {
+  if (activeSong()?.type === 'youtube' && youtubePlayer) {
     youtubePlayer.seekTo((event.target.value / 100) * youtubePlayer.getDuration(), true);
   } else if (audio.duration) audio.currentTime = (event.target.value / 100) * audio.duration;
 });
@@ -285,11 +542,25 @@ $('#volumeButton').addEventListener('click', () => {
   else { volumeLevel = Number($('#volumeBar').value) || 78; applyVolume(0); }
 });
 applyVolume(volumeLevel);
-$('#previousButton').addEventListener('click', () => nextSong(-1));
-$('#nextButton').addEventListener('click', () => nextSong());
-$('#shuffleButton').addEventListener('click', (event) => { shuffled = !shuffled; event.currentTarget.style.color = shuffled ? '#527d9f' : ''; showToast(shuffled ? 'Shuffle on' : 'Shuffle off'); });
-$('#repeatButton').addEventListener('click', (event) => { repeating = !repeating; event.currentTarget.style.color = repeating ? '#527d9f' : ''; showToast(repeating ? 'Repeat on' : 'Repeat off'); });
-$('#favoriteButton').addEventListener('click', (event) => { favorite = !favorite; event.currentTarget.textContent = favorite ? '♥' : '♡'; event.currentTarget.style.color = favorite ? '#6d9bb8' : ''; });
+$('#previousButton').addEventListener('click', () => changeSong(-1));
+$('#nextButton').addEventListener('click', () => changeSong(1));
+$('#shuffleButton').addEventListener('click', () => {
+  shuffled = !shuffled;
+  shuffleSeen = new Set(activeSong() ? [activeSong().id] : []);
+  if (youtubePlayer && isPlaylist(activeSong())) youtubePlayer.setShuffle(shuffled);
+  updateModeButtons();
+  showToast(shuffled ? 'Shuffle on' : 'Shuffle off');
+});
+$('#repeatButton').addEventListener('click', () => {
+  repeatMode = { off: 'all', all: 'one', one: 'off' }[repeatMode];
+  if (youtubePlayer && isPlaylist(activeSong())) youtubePlayer.setLoop(repeatMode !== 'off');
+  updateModeButtons();
+  showToast({ off: 'Repeat off', all: 'Repeat all songs', one: 'Repeat current song' }[repeatMode]);
+});
+$('#favoriteButton').addEventListener('click', () => {
+  if (!activeSong()) return showToast('Select a song first');
+  toggleFavorite(activeIndex);
+});
 $('#pinButton').addEventListener('click', (event) => {
   pinned = !pinned;
   event.currentTarget.classList.toggle('active', pinned);
@@ -298,17 +569,15 @@ $('#pinButton').addEventListener('click', (event) => {
   window.sonora?.setAlwaysOnTop(pinned);
   showToast(pinned ? 'Widget pinned to desktop' : 'Widget unpinned');
 });
-$('#libraryButton').addEventListener('click', () => {
-  $('.widget').classList.add('library-open');
-  window.sonora?.resize(660);
-});
-$('#closeLibrary').addEventListener('click', () => {
-  $('.widget').classList.remove('library-open');
-  window.sonora?.resize(150);
-});
+$('#libraryButton').addEventListener('click', () => setLibraryOpen(!widget.classList.contains('library-open')));
+$('#closeLibrary').addEventListener('click', () => setLibraryOpen(false));
 $('#minimizeButton').addEventListener('click', () => window.sonora?.minimize());
 $('#closeButton').addEventListener('click', () => window.sonora?.close());
-$('#fileInput').addEventListener('change', (event) => addLocalFiles(event.target.files));
+$('#fileInput').addEventListener('change', (event) => {
+  const files = [...event.target.files];
+  event.target.value = '';
+  addLocalFiles(files);
+});
 $('#youtubeButton').addEventListener('click', () => {
   $('#youtubeDialog').classList.add('open');
   $('#youtubeInput').focus();
@@ -322,13 +591,54 @@ $('#youtubeInput').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') addYoutube();
   if (event.key === 'Escape') $('#cancelYoutube').click();
 });
-$('#dropZone').addEventListener('dragover', (event) => { event.preventDefault(); event.currentTarget.classList.add('dragging'); });
-$('#dropZone').addEventListener('dragleave', (event) => event.currentTarget.classList.remove('dragging'));
-$('#dropZone').addEventListener('drop', (event) => { event.preventDefault(); event.currentTarget.classList.remove('dragging'); addLocalFiles(event.dataTransfer.files); });
+
+// Dropping a file anywhere must never navigate the window away from the app
+const isFileDrag = (event) => [...(event.dataTransfer?.types || [])].includes('Files');
+const setDragging = (on) => { widget.classList.toggle('drag-over', on); $('#dropZone').classList.toggle('dragging', on); };
+['dragenter', 'dragover'].forEach((type) => document.addEventListener(type, (event) => {
+  event.preventDefault();
+  if (!isFileDrag(event)) return;
+  event.dataTransfer.dropEffect = 'copy';
+  setDragging(true);
+}));
+document.addEventListener('dragleave', (event) => { if (!event.relatedTarget) setDragging(false); });
+document.addEventListener('drop', (event) => {
+  event.preventDefault();
+  setDragging(false);
+  if (event.dataTransfer?.files?.length) addLocalFiles(event.dataTransfer.files);
+});
+
 $('#songList').addEventListener('click', (event) => {
+  if (event.target.closest('.rename-input')) return;
   const remove = event.target.closest('[data-remove]');
-  if (remove) { const index = Number(remove.dataset.remove); songs.splice(index, 1); if (index === activeIndex) { activeIndex = -1; audio.pause(); $('#trackTitle').textContent = 'Your quiet space'; $('#trackArtist').textContent = 'Add a song to begin'; } else if (index < activeIndex) activeIndex--; saveSongs(); return; }
-  const item = event.target.closest('[data-index]'); if (item) setActive(Number(item.dataset.index), false);
+  if (remove) {
+    const index = Number(remove.dataset.remove);
+    if (songs[index]?.id === editingId) editingId = null;
+    if (index === activeIndex) clearActive();
+    else if (index < activeIndex) activeIndex--;
+    songs.splice(index, 1);
+    saveSongs();
+    return;
+  }
+  const favoriteToggle = event.target.closest('[data-favorite]');
+  if (favoriteToggle) return toggleFavorite(Number(favoriteToggle.dataset.favorite));
+  const rename = event.target.closest('[data-rename]');
+  if (rename) return startRename(Number(rename.dataset.rename));
+  const item = event.target.closest('[data-index]');
+  if (!item) return;
+  const index = Number(item.dataset.index);
+  if (index === activeIndex) togglePlayback(); else setActive(index, true);
+});
+$('#songList').addEventListener('input', (event) => {
+  if (event.target.classList.contains('rename-input')) editingValue = event.target.value;
+});
+$('#songList').addEventListener('keydown', (event) => {
+  if (!event.target.classList.contains('rename-input')) return;
+  if (event.key === 'Enter') { event.preventDefault(); commitRename(); }
+  if (event.key === 'Escape') { event.preventDefault(); cancelRename(); }
+});
+$('#songList').addEventListener('focusout', (event) => {
+  if (!rendering && event.target.classList.contains('rename-input')) commitRename();
 });
 $('#saveButton').addEventListener('click', saveLibraryFile);
 $('#exportButton').addEventListener('click', saveLibraryFile);
@@ -336,18 +646,42 @@ $('#importInput').addEventListener('change', async (event) => {
   try {
     const imported = JSON.parse(await event.target.files[0].text());
     if (!Array.isArray(imported) || imported.some((song) => !song.title || !['local', 'youtube'].includes(song.type))) throw new Error();
-    songs = imported; saveSongs(); renderSongs(); showToast(`${songs.length} songs imported`);
+    clearActive();
+    songs = normalizeSongs(imported); playHistory = []; shuffleSeen = new Set();
+    saveSongs(); showToast(`${songs.length} songs imported`);
   } catch { showToast('Could not read that library JSON'); }
+  event.target.value = '';
 });
+
+function trackWidgetBounds() {
+  if (!window.sonora?.setWidgetRect) return;
+  let queued = false;
+  const send = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      const { x, y, width, height } = widget.getBoundingClientRect();
+      window.sonora.setWidgetRect({ x, y, width, height });
+    });
+  };
+  new ResizeObserver(send).observe(widget);
+  window.addEventListener('resize', send);
+  send();
+}
+
+setPlayingState(false);
+updateModeButtons();
+$('#previousButton').innerHTML = ICONS.previous;
+$('#nextButton').innerHTML = ICONS.next;
+$('#shuffleButton').innerHTML = ICONS.shuffle;
+setLibraryOpen(widget.classList.contains('library-open'));
 renderSongs();
 songs.filter((song) => song.type === 'youtube' && !song.metadataLoaded).forEach(enrichYoutubeSong);
 window.sonora?.loadLibrary().then((savedSongs) => {
-  if (!Array.isArray(savedSongs) || !savedSongs.length) return;
-  songs = savedSongs;
+  if (!Array.isArray(savedSongs) || !savedSongs.length || activeIndex >= 0) return;
+  songs = normalizeSongs(savedSongs);
   renderSongs();
   songs.filter((song) => song.type === 'youtube' && !song.metadataLoaded).forEach(enrichYoutubeSong);
 }).catch(() => showToast('Could not restore the saved library'));
-window.sonora?.resize(widget.classList.contains('library-open') ? 660 : 150);
-widget.addEventListener('mouseenter', () => window.sonora?.setMouseThrough(false));
-widget.addEventListener('mouseleave', () => window.sonora?.setMouseThrough(true));
-window.sonora?.setMouseThrough(true);
+trackWidgetBounds();

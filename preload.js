@@ -8,6 +8,6 @@ contextBridge.exposeInMainWorld('sonora', {
   persistLibrary: (library) => ipcRenderer.invoke('sonora:persist-library', library),
   saveLibrary: (library) => ipcRenderer.invoke('sonora:save-library', library),
   setAlwaysOnTop: (enabled) => ipcRenderer.send('sonora:always-on-top', enabled),
-  setMouseThrough: (enabled) => ipcRenderer.send('sonora:mouse-through', enabled),
+  setWidgetRect: (rect) => ipcRenderer.send('sonora:widget-rect', rect),
   resize: (height) => ipcRenderer.send('sonora:resize', height)
 });
