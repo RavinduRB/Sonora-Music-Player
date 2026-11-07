@@ -25,6 +25,13 @@ const ICONS = {
 };
 
 const THEME_MODES = ['auto', 'light', 'dark'];
+const YOUTUBE_ERRORS = {
+  2: 'This YouTube link is invalid',
+  5: 'This video cannot be played in the widget',
+  100: 'This video was removed or is private',
+  101: 'The owner of this video does not allow embedded playback',
+  150: 'The owner of this video does not allow embedded playback'
+};
 const THEME_LABELS = {
   auto: 'Theme: automatic (follows the background)',
   light: 'Theme: light',
@@ -43,6 +50,7 @@ let youtubeReady = null;
 let youtubeTimer = null;
 let pendingPlaylistSetup = false;
 let volumeLevel = 78;
+let lastVolume = 78;
 let muted = false;
 let loadToken = 0;
 let playHistory = [];
@@ -92,10 +100,10 @@ function prepareYoutubePlayer() {
             resolve(youtubePlayer);
           },
           onStateChange: handleYoutubeState,
-          onError: () => {
+          onError: (event) => {
             if (activeSong()?.type !== 'youtube') return;
             setPlayingState(false);
-            showToast('This video cannot be played in the widget');
+            showToast(YOUTUBE_ERRORS[event.data] || 'This video cannot be played in the widget');
           }
         }
       });
@@ -309,6 +317,39 @@ function cancelRename() {
   renderSongs();
 }
 
+async function removeSongAt(index) {
+  const song = songs[index];
+  if (!song) return;
+  const activeId = activeSong()?.id;
+  if (song.id === editingId) editingId = null;
+  if (index === activeIndex) clearActive();
+  else if (index < activeIndex) activeIndex--;
+  songs.splice(index, 1);
+  renderSongs();
+  showToast('Removing song…');
+
+  try {
+    if (window.sonora?.removeLibrarySong) {
+      const removed = await window.sonora.removeLibrarySong(song.id);
+      if (!removed) await window.sonora.persistLibrary(serializedSongs());
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (error) {
+        console.error('Could not clear the browser library cache:', error);
+        showToast('Song removed, but the browser cache could not be cleared');
+        return;
+      }
+    } else saveSongs();
+    showToast('Song removed');
+  } catch (error) {
+    console.error('Could not remove song from the saved library:', error);
+    songs.splice(Math.min(index, songs.length), 0, song);
+    if (activeId && activeId !== song.id) activeIndex = songs.findIndex((item) => item.id === activeId);
+    renderSongs();
+    showToast('Could not remove song from the saved library');
+  }
+}
+
 function showTrack(song) {
   $('#trackTitle').textContent = song ? song.title : 'Your quiet space';
   $('#trackArtist').textContent = song ? subtitleFor(song) : 'Add a song to begin';
@@ -423,7 +464,8 @@ function changeSong(direction = 1, auto = false) {
   if (direction < 0) {
     if (shuffled) {
       while (playHistory.length) {
-        const index = songs.findIndex((song) => song.id === playHistory.pop());
+        const previousId = playHistory.pop();
+        const index = songs.findIndex((song) => song.id === previousId);
         if (index >= 0) return setActive(index, true, { back: true });
       }
     }
@@ -553,6 +595,7 @@ $('#seekBar').addEventListener('input', (event) => {
 });
 function applyVolume(value) {
   volumeLevel = Math.max(0, Math.min(100, Number(value)));
+  if (volumeLevel > 0) lastVolume = volumeLevel;
   audio.volume = volumeLevel / 100;
   if (youtubePlayer) youtubePlayer.setVolume(volumeLevel);
   $('#volumeBar').value = volumeLevel;
@@ -563,10 +606,7 @@ function applyVolume(value) {
   $('#volumeButton').setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
 }
 $('#volumeBar').addEventListener('input', (event) => applyVolume(event.target.value));
-$('#volumeButton').addEventListener('click', () => {
-  if (muted) applyVolume(volumeLevel || 78);
-  else { volumeLevel = Number($('#volumeBar').value) || 78; applyVolume(0); }
-});
+$('#volumeButton').addEventListener('click', () => applyVolume(muted ? lastVolume : 0));
 applyVolume(volumeLevel);
 $('#previousButton').addEventListener('click', () => changeSong(-1));
 $('#nextButton').addEventListener('click', () => changeSong(1));
@@ -645,13 +685,7 @@ $('#songList').addEventListener('click', (event) => {
   if (event.target.closest('.rename-input')) return;
   const remove = event.target.closest('[data-remove]');
   if (remove) {
-    const index = Number(remove.dataset.remove);
-    if (songs[index]?.id === editingId) editingId = null;
-    if (index === activeIndex) clearActive();
-    else if (index < activeIndex) activeIndex--;
-    songs.splice(index, 1);
-    saveSongs();
-    return;
+    return removeSongAt(Number(remove.dataset.remove));
   }
   const favoriteToggle = event.target.closest('[data-favorite]');
   if (favoriteToggle) return toggleFavorite(Number(favoriteToggle.dataset.favorite));

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('sonora', {
   getYoutubeMetadata: (url) => ipcRenderer.invoke('sonora:youtube-metadata', url),
   loadLibrary: () => ipcRenderer.invoke('sonora:load-library'),
   persistLibrary: (library) => ipcRenderer.invoke('sonora:persist-library', library),
+  removeLibrarySong: (songId) => ipcRenderer.invoke('sonora:remove-library-song', songId),
   saveLibrary: (library) => ipcRenderer.invoke('sonora:save-library', library),
   setAlwaysOnTop: (enabled) => ipcRenderer.send('sonora:always-on-top', enabled),
   setWidgetRect: (rect) => ipcRenderer.send('sonora:widget-rect', rect),

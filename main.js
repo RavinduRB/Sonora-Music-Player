@@ -3,6 +3,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { pipeline } = require('stream/promises');
 
 let mainWindow;
 let localServer;
@@ -17,7 +18,14 @@ const contentTypes = {
 function startLocalServer() {
   return new Promise((resolve, reject) => {
     localServer = http.createServer((request, response) => {
-      const requestPath = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
+      let requestPath;
+      try {
+        requestPath = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
+      } catch {
+        response.writeHead(400);
+        response.end('Bad request');
+        return;
+      }
       const relativePath = requestPath === '/' ? 'index.html' : requestPath.slice(1);
       const filePath = path.resolve(__dirname, relativePath);
       if (!filePath.startsWith(path.resolve(__dirname) + path.sep)) {
@@ -135,10 +143,147 @@ ipcMain.handle('sonora:load-library', async () => {
     throw error;
   }
 });
+// Writes are queued and swapped in atomically so overlapping saves cannot interleave and a crash cannot truncate the library
+let libraryWriteQueue = Promise.resolve();
+function writeLibraryFile(filePath, library) {
+  const write = libraryWriteQueue.then(async () => {
+    const tempPath = `${filePath}.tmp`;
+    await fs.promises.writeFile(tempPath, JSON.stringify(library, null, 2), 'utf8');
+    await fs.promises.rename(tempPath, filePath);
+  });
+  libraryWriteQueue = write.catch(() => {});
+  return write;
+}
+// Song IDs are serialized first, so this finds an entry without buffering its large audio URL.
+async function findLibrarySongRange(filePath, songId) {
+  const prefix = Buffer.allocUnsafe(16 * 1024);
+  let prefixLength = 0;
+  let offset = 0;
+  let arrayStarted = false;
+  let itemStart = -1;
+  let itemPreviousComma = -1;
+  let previousComma = -1;
+  let objectDepth = 0;
+  let inString = false;
+  let escaped = false;
+  let pendingTarget = null;
+
+  for await (const chunk of fs.createReadStream(filePath)) {
+    for (let index = 0; index < chunk.length; index += 1, offset += 1) {
+      const byte = chunk[index];
+      if (itemStart < 0) {
+        if (pendingTarget) {
+          if (byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d) continue;
+          if (byte === 0x2c) return { start: pendingTarget.start, end: offset + 1 };
+          if (byte === 0x5d) {
+            return {
+              start: pendingTarget.previousComma >= 0 ? pendingTarget.previousComma : pendingTarget.start,
+              end: pendingTarget.end
+            };
+          }
+          throw new Error('Saved library has invalid JSON after a song');
+        }
+        if (!arrayStarted) {
+          if (byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d) continue;
+          if (byte !== 0x5b) throw new Error('Saved library is not a JSON array');
+          arrayStarted = true;
+          continue;
+        }
+        if (byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d) continue;
+        if (byte === 0x2c) {
+          previousComma = offset;
+          continue;
+        }
+        if (byte === 0x5d) return null;
+        if (byte !== 0x7b) throw new Error('Saved library contains an invalid song entry');
+        itemStart = offset;
+        itemPreviousComma = previousComma;
+        objectDepth = 1;
+        prefixLength = 0;
+        prefix[prefixLength++] = byte;
+        inString = false;
+        escaped = false;
+        continue;
+      }
+
+      if (prefixLength < prefix.length) prefix[prefixLength++] = byte;
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (byte === 0x5c) escaped = true;
+        else if (byte === 0x22) inString = false;
+        continue;
+      }
+      if (byte === 0x22) inString = true;
+      else if (byte === 0x7b || byte === 0x5b) objectDepth += 1;
+      else if (byte === 0x7d || byte === 0x5d) {
+        objectDepth -= 1;
+        if (objectDepth < 0 || (objectDepth === 0 && byte !== 0x7d)) {
+          throw new Error('Saved library contains an invalid song entry');
+        }
+        if (objectDepth === 0) {
+          const text = prefix.toString('utf8', 0, prefixLength);
+          const idMatch = /"id"\s*:\s*("(?:\\.|[^"\\])*")/.exec(text);
+          if (idMatch && JSON.parse(idMatch[1]) === songId) {
+            pendingTarget = {
+              start: itemStart,
+              end: offset + 1,
+              previousComma: itemPreviousComma
+            };
+          }
+          itemStart = -1;
+        }
+      }
+    }
+  }
+  if (!arrayStarted || itemStart >= 0) throw new Error('Saved library contains invalid JSON');
+  return null;
+}
+
+async function removeLibrarySongFromFile(filePath, songId) {
+  let stat;
+  try {
+    stat = await fs.promises.stat(filePath);
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+  const range = await findLibrarySongRange(filePath, songId);
+  if (!range) return false;
+
+  const tempPath = `${filePath}.tmp`;
+  try {
+    await pipeline((async function* copyRemainingLibrary() {
+      if (range.start > 0) {
+        yield* fs.createReadStream(filePath, { start: 0, end: range.start - 1 });
+      }
+      if (range.end < stat.size) {
+        yield* fs.createReadStream(filePath, { start: range.end, end: stat.size - 1 });
+      }
+    })(), fs.createWriteStream(tempPath));
+    await fs.promises.rename(tempPath, filePath);
+    return true;
+  } catch (error) {
+    try {
+      await fs.promises.unlink(tempPath);
+    } catch (cleanupError) {
+      if (cleanupError.code !== 'ENOENT') console.error('Could not clean up temporary library file:', cleanupError);
+    }
+    throw error;
+  }
+}
+
+ipcMain.handle('sonora:remove-library-song', async (_event, songId) => {
+  if (typeof songId !== 'string' || !songId) throw new Error('Song ID must be a non-empty string');
+  const remove = libraryWriteQueue.then(() => removeLibrarySongFromFile(
+    path.join(app.getPath('userData'), 'sonora-library.json'),
+    songId
+  ));
+  libraryWriteQueue = remove.catch(() => {});
+  return remove;
+});
 ipcMain.handle('sonora:persist-library', async (_event, library) => {
   if (!Array.isArray(library)) throw new Error('Library data must be an array');
-  const libraryPath = path.join(app.getPath('userData'), 'sonora-library.json');
-  await fs.promises.writeFile(libraryPath, JSON.stringify(library, null, 2), 'utf8');
+  await writeLibraryFile(path.join(app.getPath('userData'), 'sonora-library.json'), library);
   return true;
 });
 const settingsPath = () => path.join(app.getPath('userData'), 'sonora-settings.json');
@@ -248,15 +393,12 @@ async function sampleBackground() {
 setInterval(sampleBackground, THEME_INTERVAL_MS);
 ipcMain.on('sonora:resize', (_event, height) => {
   if (!mainWindow || !Number.isInteger(height)) return;
-  const [width, currentHeight] = mainWindow.getSize();
-  const [x, y] = mainWindow.getPosition();
-  const display = screen.getDisplayNearestPoint({ x, y });
-  const rightOffset = display.workArea.x + display.workArea.width - (x + width);
+  const { x, y, width, height: currentHeight } = mainWindow.getBounds();
+  const { workArea } = screen.getDisplayNearestPoint({ x, y });
   const nextHeight = Math.max(130, Math.min(height, 760));
   if (currentHeight === nextHeight) return;
-  mainWindow.setSize(width, nextHeight);
-  mainWindow.setPosition(
-    display.workArea.x + display.workArea.width - width - rightOffset,
-    y
-  );
+  // setSize() silently fails to shrink this frameless, non-resizable window on Windows; setBounds() works.
+  // The window is also kept inside the work area so the library never opens below the screen edge.
+  const nextY = Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - nextHeight));
+  mainWindow.setBounds({ x, y: nextY, width, height: nextHeight });
 });
