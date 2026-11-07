@@ -257,7 +257,11 @@ async function replaceLibraryFileRange(filePath, start, end, replacement) {
   try {
     await pipeline((async function* rewriteLibrary() {
       if (start > 0) yield* fs.createReadStream(filePath, { start: 0, end: start - 1 });
-      if (replacement.length) yield replacement;
+      if (Buffer.isBuffer(replacement)) {
+        if (replacement.length) yield replacement;
+      } else {
+        for await (const chunk of replacement) yield chunk;
+      }
       if (end < stat.size) yield* fs.createReadStream(filePath, { start: end, end: stat.size - 1 });
     })(), fs.createWriteStream(tempPath));
     await fs.promises.rename(tempPath, filePath);
@@ -269,6 +273,146 @@ async function replaceLibraryFileRange(filePath, start, end, replacement) {
     }
     throw error;
   }
+}
+
+async function replaceLibraryFileRanges(filePath, replacements) {
+  const stat = await fs.promises.stat(filePath);
+  const sorted = [...replacements].sort((left, right) => left.start - right.start);
+  const tempPath = `${filePath}.tmp`;
+  try {
+    await pipeline((async function* rewriteLibrary() {
+      let offset = 0;
+      for (const replacement of sorted) {
+        if (replacement.start < offset || replacement.end < replacement.start || replacement.end > stat.size) {
+          throw new Error('Invalid library update range');
+        }
+        if (replacement.start > offset) {
+          yield* fs.createReadStream(filePath, { start: offset, end: replacement.start - 1 });
+        }
+        if (replacement.data.length) yield replacement.data;
+        offset = replacement.end;
+      }
+      if (offset < stat.size) yield* fs.createReadStream(filePath, { start: offset, end: stat.size - 1 });
+    })(), fs.createWriteStream(tempPath));
+    await fs.promises.rename(tempPath, filePath);
+  } catch (error) {
+    try {
+      await fs.promises.unlink(tempPath);
+    } catch (cleanupError) {
+      if (cleanupError.code !== 'ENOENT') console.error('Could not clean up temporary library file:', cleanupError);
+    }
+    throw error;
+  }
+}
+
+async function findLibrarySongProperties(filePath, range) {
+  const properties = new Map();
+  let state = 'objectStart';
+  let keyBytes = [];
+  let key = '';
+  let keyEscaped = false;
+  let valueStart = -1;
+  let stringEscaped = false;
+  let compoundDepth = 0;
+  let compoundInString = false;
+  let compoundEscaped = false;
+  let lastPrimitiveByte = -1;
+  let offset = range.itemStart;
+
+  for await (const chunk of fs.createReadStream(filePath, { start: range.itemStart, end: range.itemEnd - 1 })) {
+    for (const byte of chunk) {
+      if (state === 'objectStart') {
+        if (byte !== 0x7b) throw new Error('Saved library contains an invalid song entry');
+        state = 'keyOrEnd';
+      } else if (state === 'keyOrEnd') {
+        if (byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d) {
+          offset++;
+          continue;
+        }
+        if (byte === 0x7d) return properties;
+        if (byte !== 0x22) throw new Error('Saved library contains an invalid song entry');
+        keyBytes = [];
+        keyEscaped = false;
+        state = 'key';
+      } else if (state === 'key') {
+        if (keyEscaped) {
+          keyBytes.push(byte);
+          keyEscaped = false;
+        } else if (byte === 0x5c) {
+          keyBytes.push(byte);
+          keyEscaped = true;
+        } else if (byte === 0x22) {
+          key = JSON.parse(`"${Buffer.from(keyBytes).toString('utf8')}"`);
+          state = 'colon';
+        } else {
+          keyBytes.push(byte);
+        }
+      } else if (state === 'colon') {
+        if (byte === 0x3a) state = 'valueStart';
+        else if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
+          throw new Error('Saved library contains an invalid song entry');
+        }
+      } else if (state === 'valueStart') {
+        if (byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d) {
+          offset++;
+          continue;
+        }
+        valueStart = offset;
+        if (byte === 0x22) {
+          stringEscaped = false;
+          state = 'stringValue';
+        } else if (byte === 0x7b || byte === 0x5b) {
+          compoundDepth = 1;
+          compoundInString = false;
+          compoundEscaped = false;
+          state = 'compoundValue';
+        } else {
+          lastPrimitiveByte = offset;
+          state = 'primitiveValue';
+        }
+      } else if (state === 'stringValue') {
+        if (stringEscaped) stringEscaped = false;
+        else if (byte === 0x5c) stringEscaped = true;
+        else if (byte === 0x22) {
+          properties.set(key, { start: valueStart, end: offset + 1 });
+          state = 'afterValue';
+        }
+      } else if (state === 'primitiveValue') {
+        if (byte === 0x2c || byte === 0x7d) {
+          if (lastPrimitiveByte < valueStart) throw new Error('Saved library contains an invalid song entry');
+          properties.set(key, { start: valueStart, end: lastPrimitiveByte + 1 });
+          if (byte === 0x7d) return properties;
+          state = 'keyOrEnd';
+        } else if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
+          lastPrimitiveByte = offset;
+        }
+      } else if (state === 'compoundValue') {
+        if (compoundInString) {
+          if (compoundEscaped) compoundEscaped = false;
+          else if (byte === 0x5c) compoundEscaped = true;
+          else if (byte === 0x22) compoundInString = false;
+        } else if (byte === 0x22) {
+          compoundInString = true;
+        } else if (byte === 0x7b || byte === 0x5b) {
+          compoundDepth++;
+        } else if (byte === 0x7d || byte === 0x5d) {
+          compoundDepth--;
+          if (compoundDepth === 0) {
+            properties.set(key, { start: valueStart, end: offset + 1 });
+            state = 'afterValue';
+          }
+        }
+      } else if (state === 'afterValue') {
+        if (byte === 0x2c) state = 'keyOrEnd';
+        else if (byte === 0x7d) return properties;
+        else if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d) {
+          throw new Error('Saved library contains an invalid song entry');
+        }
+      }
+      offset++;
+    }
+  }
+  throw new Error('Saved library contains an incomplete song entry');
 }
 
 async function removeLibrarySongFromFile(filePath, songId) {
@@ -357,6 +501,75 @@ async function appendYoutubeSongToFile(filePath, song) {
   await replaceLibraryFileRange(filePath, point.contentEnd, point.closeOffset, replacement);
 }
 
+function validateLocalSongImports(songs) {
+  const allowedExtensions = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'weba', 'webm']);
+  const seen = new Set();
+  if (!Array.isArray(songs) || !songs.length) throw new Error('At least one audio file is required');
+  return songs.map((song) => {
+    if (!song || typeof song !== 'object' || typeof song.id !== 'string' || !song.id
+      || typeof song.title !== 'string' || !song.title
+      || typeof song.sourcePath !== 'string' || !path.isAbsolute(song.sourcePath)) {
+      throw new Error('Invalid local audio song');
+    }
+    if (seen.has(song.id)) throw new Error('Duplicate local audio song ID');
+    seen.add(song.id);
+    const extension = path.extname(song.sourcePath).slice(1).toLowerCase();
+    if (!allowedExtensions.has(extension)) throw new Error('Unsupported audio file type');
+    const mimeType = typeof song.mimeType === 'string' && /^audio\/[a-z0-9.+-]+$/i.test(song.mimeType)
+      ? song.mimeType
+      : ({
+        mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg',
+        m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', opus: 'audio/ogg',
+        weba: 'audio/webm', webm: 'audio/webm'
+      })[extension];
+    return {
+      id: song.id,
+      title: song.title,
+      artist: typeof song.artist === 'string' ? song.artist : 'Local audio',
+      sourcePath: song.sourcePath,
+      mimeType
+    };
+  });
+}
+
+async function* localSongDataUrl(song) {
+  const fields = `  {\n    "id": ${JSON.stringify(song.id)},\n    "title": ${JSON.stringify(song.title)},\n    "artist": ${JSON.stringify(song.artist)},\n    "type": "local",\n    "url": ${JSON.stringify(`data:${song.mimeType};base64,`).slice(0, -1)}`;
+  yield Buffer.from(fields);
+  let remainder = Buffer.alloc(0);
+  for await (const chunk of fs.createReadStream(song.sourcePath)) {
+    const data = remainder.length ? Buffer.concat([remainder, chunk]) : chunk;
+    const completeLength = data.length - data.length % 3;
+    if (completeLength) yield data.subarray(0, completeLength).toString('base64');
+    remainder = Buffer.from(data.subarray(completeLength));
+  }
+  if (remainder.length) yield remainder.toString('base64');
+  yield Buffer.from('",\n    "favorite": false\n  }');
+}
+
+async function* appendLocalSongEntries(songs, hasSongs) {
+  let separator = hasSongs ? ',' : '';
+  for (const song of songs) {
+    yield Buffer.from(`${separator}\n`);
+    yield* localSongDataUrl(song);
+    separator = ',';
+  }
+  yield Buffer.from('\n');
+}
+
+async function appendLocalSongsToFile(filePath, songs) {
+  for (const song of songs) {
+    const stat = await fs.promises.stat(song.sourcePath);
+    if (!stat.isFile()) throw new Error('Audio source is not a file');
+  }
+  const point = await findLibraryInsertionPoint(filePath);
+  await replaceLibraryFileRange(
+    filePath,
+    point.contentEnd,
+    point.closeOffset,
+    appendLocalSongEntries(songs, point.hasSongs)
+  );
+}
+
 async function updateYoutubeSongMetadata(filePath, metadata) {
   const range = await findLibrarySongRange(filePath, metadata.id);
   if (!range) return false;
@@ -375,6 +588,38 @@ async function updateYoutubeSongMetadata(filePath, metadata) {
   song.metadataLoaded = true;
   const formattedSong = JSON.stringify(song, null, 2).split('\n').map((line) => `  ${line}`).join('\n');
   await replaceLibraryFileRange(filePath, range.itemStart, range.itemEnd, Buffer.from(formattedSong));
+  return true;
+}
+
+async function updateLibrarySong(filePath, update) {
+  const range = await findLibrarySongRange(filePath, update.id);
+  if (!range) return false;
+  const properties = await findLibrarySongProperties(filePath, range);
+  const replacements = [];
+  const missing = {};
+  for (const [key, value] of Object.entries(update.fields)) {
+    const propertyRange = properties.get(key);
+    if (propertyRange) {
+      replacements.push({
+        ...propertyRange,
+        data: Buffer.from(JSON.stringify(value))
+      });
+    } else {
+      missing[key] = value;
+    }
+  }
+  if (Object.keys(missing).length) {
+    const insertionOffset = Math.max(...[...properties.values()].map(({ end }) => end));
+    const fields = Object.entries(missing)
+      .map(([key, value]) => `    ${JSON.stringify(key)}: ${JSON.stringify(value)}`)
+      .join(',\n');
+    replacements.push({
+      start: insertionOffset,
+      end: insertionOffset,
+      data: Buffer.from(`,\n${fields}`)
+    });
+  }
+  if (replacements.length) await replaceLibraryFileRanges(filePath, replacements);
   return true;
 }
 
@@ -414,6 +659,56 @@ ipcMain.handle('sonora:update-youtube-metadata', async (_event, metadata) => {
   return update;
 });
 
+ipcMain.handle('sonora:add-local-songs', async (_event, songs) => {
+  const imports = validateLocalSongImports(songs);
+  const filePath = path.join(app.getPath('userData'), 'sonora-library.json');
+  const add = libraryWriteQueue.then(async () => {
+    try {
+      await fs.promises.access(filePath);
+    } catch (error) {
+      if (error.code === 'ENOENT') return false;
+      throw error;
+    }
+    await appendLocalSongsToFile(filePath, imports);
+    return true;
+  });
+  libraryWriteQueue = add.catch(() => {});
+  return add;
+});
+
+ipcMain.handle('sonora:update-library-song', async (_event, update) => {
+  if (!update || typeof update.id !== 'string' || !update.id
+    || !update.fields || typeof update.fields !== 'object' || Array.isArray(update.fields)) {
+    throw new Error('Invalid song update');
+  }
+  const fields = {};
+  if (Object.hasOwn(update.fields, 'title')) {
+    if (typeof update.fields.title !== 'string' || !update.fields.title.trim()) throw new Error('Invalid song title');
+    fields.title = update.fields.title;
+  }
+  if (Object.hasOwn(update.fields, 'favorite')) {
+    if (typeof update.fields.favorite !== 'boolean') throw new Error('Invalid favorite value');
+    fields.favorite = update.fields.favorite;
+  }
+  if (Object.hasOwn(update.fields, 'customTitle')) {
+    if (typeof update.fields.customTitle !== 'boolean') throw new Error('Invalid custom title value');
+    fields.customTitle = update.fields.customTitle;
+  }
+  if (!Object.keys(fields).length) throw new Error('Song update contains no supported fields');
+  const filePath = path.join(app.getPath('userData'), 'sonora-library.json');
+  const updateResult = libraryWriteQueue.then(async () => {
+    try {
+      await fs.promises.access(filePath);
+    } catch (error) {
+      if (error.code === 'ENOENT') return false;
+      throw error;
+    }
+    return updateLibrarySong(filePath, { id: update.id, fields });
+  });
+  libraryWriteQueue = updateResult.catch(() => {});
+  return updateResult;
+});
+
 ipcMain.handle('sonora:remove-library-song', async (_event, songId) => {
   if (typeof songId !== 'string' || !songId) throw new Error('Song ID must be a non-empty string');
   const remove = libraryWriteQueue.then(() => removeLibrarySongFromFile(
@@ -422,6 +717,35 @@ ipcMain.handle('sonora:remove-library-song', async (_event, songId) => {
   ));
   libraryWriteQueue = remove.catch(() => {});
   return remove;
+});
+ipcMain.handle('sonora:import-library-file', async (_event, sourcePath) => {
+  if (typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath)) throw new Error('Invalid library file path');
+  const filePath = path.join(app.getPath('userData'), 'sonora-library.json');
+  const importFile = libraryWriteQueue.then(async () => {
+    const stat = await fs.promises.stat(sourcePath);
+    if (!stat.isFile()) throw new Error('Library import source is not a file');
+    const sourceResolved = path.resolve(sourcePath);
+    const destinationResolved = path.resolve(filePath);
+    const sameFile = process.platform === 'win32'
+      ? sourceResolved.toLowerCase() === destinationResolved.toLowerCase()
+      : sourceResolved === destinationResolved;
+    if (sameFile) return true;
+    const tempPath = `${filePath}.tmp`;
+    try {
+      await pipeline(fs.createReadStream(sourcePath), fs.createWriteStream(tempPath));
+      await fs.promises.rename(tempPath, filePath);
+    } catch (error) {
+      try {
+        await fs.promises.unlink(tempPath);
+      } catch (cleanupError) {
+        if (cleanupError.code !== 'ENOENT') console.error('Could not clean up temporary library file:', cleanupError);
+      }
+      throw error;
+    }
+    return true;
+  });
+  libraryWriteQueue = importFile.catch(() => {});
+  return importFile;
 });
 ipcMain.handle('sonora:persist-library', async (_event, library) => {
   if (!Array.isArray(library)) throw new Error('Library data must be an array');
@@ -442,15 +766,28 @@ ipcMain.handle('sonora:save-settings', async (_event, settings) => {
   await fs.promises.writeFile(settingsPath(), JSON.stringify({ themeMode: settings.themeMode }, null, 2), 'utf8');
   return true;
 });
-ipcMain.handle('sonora:save-library', async (_event, library) => {
-  if (!Array.isArray(library)) throw new Error('Library data must be an array');
+ipcMain.handle('sonora:save-library', async () => {
   const result = await dialog.showSaveDialog(mainWindow, {
     title: 'Save Sonora library',
     defaultPath: path.join(app.getPath('downloads'), 'sonora-library.json'),
     filters: [{ name: 'JSON files', extensions: ['json'] }]
   });
   if (result.canceled || !result.filePath) return { canceled: true };
-  await fs.promises.writeFile(result.filePath, JSON.stringify(library, null, 2), 'utf8');
+  await libraryWriteQueue;
+  const libraryPath = path.join(app.getPath('userData'), 'sonora-library.json');
+  try {
+    await fs.promises.access(libraryPath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    await fs.promises.writeFile(result.filePath, '[]', 'utf8');
+    return { canceled: false, filePath: result.filePath };
+  }
+  const sourcePath = path.resolve(libraryPath);
+  const destinationPath = path.resolve(result.filePath);
+  const sameFile = process.platform === 'win32'
+    ? sourcePath.toLowerCase() === destinationPath.toLowerCase()
+    : sourcePath === destinationPath;
+  if (!sameFile) await fs.promises.copyFile(libraryPath, result.filePath);
   return { canceled: false, filePath: result.filePath };
 });
 ipcMain.on('sonora:always-on-top', (_event, enabled) => {

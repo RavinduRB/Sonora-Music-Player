@@ -46,6 +46,7 @@ let shuffled = false;
 let repeatMode = 'off';
 let pinned = true;
 const pendingYoutubeSongIds = new Set();
+const pendingYoutubeWrites = new Set();
 let youtubePlayer = null;
 let youtubeReady = null;
 let youtubeTimer = null;
@@ -209,14 +210,38 @@ function serializedSongs() {
     id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, favorite, customTitle
   }));
 }
-async function saveLibraryFile() {
+function clearBrowserLibraryCache() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (error) {
+    console.error('Could not clear the browser library cache:', error);
+  }
+}
+function releaseLocalObjectUrls(list) {
+  list.forEach((song) => {
+    if (typeof song.url === 'string' && song.url.startsWith('blob:')) URL.revokeObjectURL(song.url);
+  });
+}
+async function persistSongUpdate(song, fields) {
+  if (window.sonora?.updateLibrarySong) {
+    const updated = await window.sonora.updateLibrarySong({ id: song.id, fields });
+    if (updated) {
+      clearBrowserLibraryCache();
+      return;
+    }
+  }
   saveSongs();
+}
+async function saveLibraryFile() {
   try {
     if (window.sonora?.saveLibrary) {
-      const result = await window.sonora.saveLibrary(serializedSongs());
+      const pendingWrites = [...pendingYoutubeWrites];
+      await Promise.all(pendingWrites.map((write) => write.catch(() => {})));
+      const result = await window.sonora.saveLibrary();
       if (!result.canceled) showToast('Library saved as JSON');
       return;
     }
+    saveSongs();
     const blob = new Blob([JSON.stringify(serializedSongs(), null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -224,7 +249,8 @@ async function saveLibraryFile() {
     link.click();
     URL.revokeObjectURL(link.href);
     showToast('Library saved as JSON');
-  } catch {
+  } catch (error) {
+    console.error('Could not save the library as JSON:', error);
     showToast('Could not save the library');
   }
 }
@@ -306,11 +332,22 @@ function commitRename() {
   const title = editingValue.trim();
   editingId = null;
   if (song && title && title !== song.title) {
+    const previousTitle = song.title;
+    const previousCustomTitle = song.customTitle;
     song.title = title;
     song.customTitle = true;
-    saveSongs();
+    renderSongs();
     if (song === activeSong()) { showTrack(song); syncPlaylistTrack(); }
-    showToast('Song renamed');
+    persistSongUpdate(song, { title, customTitle: true }).then(() => {
+      showToast('Song renamed');
+    }).catch((error) => {
+      console.error('Could not save the renamed song:', error);
+      song.title = previousTitle;
+      song.customTitle = previousCustomTitle;
+      renderSongs();
+      if (song === activeSong()) { showTrack(song); syncPlaylistTrack(); }
+      showToast('Could not save the renamed song');
+    });
   } else renderSongs();
 }
 function cancelRename() {
@@ -333,6 +370,7 @@ async function removeSongAt(index) {
     if (window.sonora?.removeLibrarySong) {
       const removed = await window.sonora.removeLibrarySong(song.id);
       if (!removed) await window.sonora.persistLibrary(serializedSongs());
+      releaseLocalObjectUrls([song]);
       try {
         localStorage.removeItem(STORAGE_KEY);
       } catch (error) {
@@ -364,12 +402,23 @@ function refreshFavoriteButton() {
   button.title = on ? 'Remove from favorites' : 'Add to favorites';
   button.setAttribute('aria-label', button.title);
 }
-function toggleFavorite(index) {
+async function toggleFavorite(index) {
   const song = songs[index]; if (!song) return;
+  const previousFavorite = song.favorite;
   song.favorite = !song.favorite;
-  saveSongs();
+  sortFavorites();
+  renderSongs();
   if (song.favorite) $('#songList').scrollTop = 0;
-  showToast(song.favorite ? 'Added to favorites' : 'Removed from favorites');
+  try {
+    await persistSongUpdate(song, { favorite: song.favorite });
+    showToast(song.favorite ? 'Added to favorites' : 'Removed from favorites');
+  } catch (error) {
+    console.error('Could not save the favorite change:', error);
+    song.favorite = previousFavorite;
+    sortFavorites();
+    renderSongs();
+    showToast('Could not save the favorite change');
+  }
 }
 
 async function enrichYoutubeSong(song, { persist = true } = {}) {
@@ -519,20 +568,51 @@ function isAudioFile(file) {
 async function addLocalFiles(files) {
   const audioFiles = [...files].filter(isAudioFile);
   if (!audioFiles.length) return showToast('Drop audio files only');
+  const useStreamingImport = Boolean(window.sonora?.addLocalSongs && window.sonora?.getPathForFile);
+  let imported = [];
   try {
-    const imported = await Promise.all(audioFiles.map(async (file) => ({
-      id: newId(),
-      title: titleFromFile(file.name),
-      artist: 'Local audio',
-      type: 'local',
-      url: await fileAsDataUrl(file),
-      favorite: false
-    })));
+    if (useStreamingImport) {
+      const localImports = audioFiles.map((file) => {
+        const sourcePath = window.sonora.getPathForFile(file);
+        if (!sourcePath) throw new Error(`Could not resolve ${file.name}`);
+        const song = {
+          id: newId(),
+          title: titleFromFile(file.name),
+          artist: 'Local audio',
+          type: 'local',
+          url: URL.createObjectURL(file),
+          favorite: false
+        };
+        imported.push(song);
+        return { id: song.id, title: song.title, artist: song.artist, sourcePath, mimeType: file.type };
+      });
+      let added = await window.sonora.addLocalSongs(localImports);
+      if (!added) {
+        await window.sonora.persistLibrary(serializedSongs());
+        added = await window.sonora.addLocalSongs(localImports);
+      }
+      if (!added) throw new Error('The saved library is unavailable');
+      clearBrowserLibraryCache();
+    } else {
+      imported = await Promise.all(audioFiles.map(async (file) => ({
+        id: newId(),
+        title: titleFromFile(file.name),
+        artist: 'Local audio',
+        type: 'local',
+        url: await fileAsDataUrl(file),
+        favorite: false
+      })));
+    }
     songs.push(...imported);
-    saveSongs();
+    if (!useStreamingImport) saveSongs();
     if (activeIndex < 0 && songs.length) setActive(0);
+    else renderSongs();
     showToast(`${imported.length} audio file${imported.length !== 1 ? 's' : ''} added`);
-  } catch {
+  } catch (error) {
+    imported.forEach((song) => {
+      if (song.url.startsWith('blob:')) URL.revokeObjectURL(song.url);
+    });
+    console.error('Could not save the selected audio file:', error);
     showToast('Could not save the selected audio file');
   }
 }
@@ -563,6 +643,7 @@ function addYoutube() {
       renderSongs();
     } else saveSongs();
   })();
+  pendingYoutubeWrites.add(persistPromise);
   if (activeIndex < 0) setActive(0);
   else renderSongs();
   showToast('Adding YouTube song…');
@@ -581,7 +662,7 @@ function addYoutube() {
       renderSongs();
     }
     showToast('Could not add YouTube song to the saved library');
-  });
+  }).finally(() => pendingYoutubeWrites.delete(persistPromise));
 }
 
 function togglePlayback() {
@@ -756,13 +837,44 @@ $('#songList').addEventListener('focusout', (event) => {
 $('#saveButton').addEventListener('click', saveLibraryFile);
 $('#exportButton').addEventListener('click', saveLibraryFile);
 $('#importInput').addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
   try {
-    const imported = JSON.parse(await event.target.files[0].text());
+    const imported = JSON.parse(await file.text());
     if (!Array.isArray(imported) || imported.some((song) => !song.title || !['local', 'youtube'].includes(song.type))) throw new Error();
-    clearActive();
-    songs = normalizeSongs(imported); playHistory = []; shuffleSeen = new Set();
-    saveSongs(); showToast(`${songs.length} songs imported`);
-  } catch { showToast('Could not read that library JSON'); }
+    const ids = new Set();
+    const hasStableIds = imported.every((song) => {
+      if (typeof song.id !== 'string' || !song.id || ids.has(song.id)) return false;
+      ids.add(song.id);
+      return true;
+    });
+    const normalized = normalizeSongs(imported);
+    if (hasStableIds && window.sonora?.importLibraryFile && window.sonora?.getPathForFile) {
+      const sourcePath = window.sonora.getPathForFile(file);
+      if (!sourcePath) throw new Error('Could not resolve the selected JSON file');
+      const pendingWrites = [...pendingYoutubeWrites];
+      await Promise.all(pendingWrites.map((write) => write.catch(() => {})));
+      await window.sonora.importLibraryFile(sourcePath);
+      clearActive();
+      releaseLocalObjectUrls(songs);
+      songs = normalized;
+      playHistory = [];
+      shuffleSeen = new Set();
+      clearBrowserLibraryCache();
+      renderSongs();
+      showToast(`${songs.length} songs imported`);
+    } else {
+      clearActive();
+      songs = normalized;
+      playHistory = [];
+      shuffleSeen = new Set();
+      saveSongs();
+      showToast(`${songs.length} songs imported`);
+    }
+  } catch (error) {
+    console.error('Could not import that library JSON:', error);
+    showToast('Could not read that library JSON');
+  }
   event.target.value = '';
 });
 
