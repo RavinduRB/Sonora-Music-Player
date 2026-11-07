@@ -41,7 +41,12 @@
           <button class="mini-button mini-play" id="miniPlayButton" title="Play" aria-label="Play"></button>
           <button class="mini-button" id="miniNextButton" title="Next" aria-label="Next song"></button>
         </div>
+        <button class="video-toggle icon-button" id="videoButton" title="Show song video" aria-label="Show song video" aria-pressed="false" hidden>▶</button>
         <button class="favorite icon-button" id="favoriteButton" title="Favorite" aria-label="Favorite">♡</button>
+      </section>
+
+      <section class="video-panel" id="videoPanel" aria-label="Song video">
+        <div class="video-frame" id="videoFrame"><div id="youtubePlayer"></div></div>
       </section>
 
       <div class="progress-area">
@@ -102,7 +107,6 @@
         </div>
       </div>
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
-      <div id="youtubePlayer" aria-hidden="true"></div>
       <audio id="audio" preload="metadata"></audio>
     </main>
     <script src="app.js"></script>

@@ -79,6 +79,8 @@ body {
   margin: 8px 8px 0 auto;
 }
 .widget.library-open { height: 660px; }
+.widget.video-open { height: 340px; }
+.widget.library-open.video-open { height: 760px; }
 .liquid-orb { position: absolute; border-radius: 50%; filter: blur(2px); opacity: .5; pointer-events: none; }
 .orb-one { width: 118px; height: 118px; right: -48px; top: -64px; background: var(--mint); }
 .orb-two { width: 78px; height: 78px; left: -48px; bottom: -44px; background: var(--blue); opacity: .25; }
@@ -113,6 +115,13 @@ h1, h2, p { margin: 0; }
 h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; margin: 3px 0 2px; letter-spacing: -.25px; }
 .track-meta p { color: var(--muted); font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .favorite { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; }
+.video-toggle { display: grid; place-items: center; flex: 0 0 24px; color: var(--link); font-size: 10px; }
+.video-toggle[hidden] { display: none; }
+.video-toggle.active { color: var(--accent-text); background: var(--hover-strong); }
+.now-playing.has-video .mini-controls { display: none; }
+.video-panel { position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; }
+.video-open .video-panel { position: relative; top: auto; left: auto; width: auto; height: auto; overflow: visible; visibility: visible; z-index: 1; margin: -2px 0 8px; }
+.video-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #101820; box-shadow: 0 5px 16px rgba(16, 32, 48, .2); }
 .favorite.on, .fav-song.on { color: #d9708f; }
 .range { height: 3px; flex: 1; min-width: 0; margin: 0; accent-color: var(--blue); cursor: pointer; }
 .progress-area { position: relative; z-index: 1; }
@@ -188,5 +197,6 @@ h2 span { color: var(--blue); font-size: 11px; vertical-align: middle; }
 .toast { position: absolute; left: 50%; bottom: 11px; z-index: 5; padding: 7px 11px; border-radius: 9px; color: white; background: #304c67e8; font-size: 9px; opacity: 0; pointer-events: none; transform: translate(-50%, 8px); transition: .25s ease; white-space: nowrap; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 #youtubePlayer { position: absolute; left: -1px; bottom: -1px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.video-open #youtubePlayer { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 1; pointer-events: auto; }
 @keyframes slide-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (max-width: 360px) { .widget { transform: scale(.94); transform-origin: center; } }

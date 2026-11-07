@@ -131,6 +131,50 @@ ipcMain.handle('sonora:youtube-metadata', (_event, url) => new Promise((resolve,
   request.setTimeout(8000, () => request.destroy(new Error('YouTube metadata request timed out')));
   request.on('error', reject);
 }));
+ipcMain.handle('sonora:find-youtube-video', (_event, title, artist) => {
+  if (typeof title !== 'string' || !title.trim() || title.length > 200
+    || typeof artist !== 'string' || artist.length > 200) {
+    throw new Error('Invalid song details for video search');
+  }
+  const query = [title.trim(), artist.trim()].filter(Boolean).join(' ');
+  const endpoint = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  return new Promise((resolve, reject) => {
+    let body = '';
+    const request = https.get(endpoint, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    }, (response) => {
+      if (response.statusCode !== 200) {
+        response.resume();
+        reject(new Error(`YouTube video search failed with status ${response.statusCode}`));
+        return;
+      }
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 8 * 1024 * 1024) {
+          request.destroy(new Error('YouTube video search response was too large'));
+        }
+      });
+      response.on('end', () => {
+        const match = /"videoRenderer"\s*:\s*\{\s*"videoId"\s*:\s*"([\w-]{11})"[\s\S]{0,12000}?"title"\s*:\s*\{\s*"runs"\s*:\s*\[\s*\{\s*"text"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(body);
+        if (!match) {
+          resolve(null);
+          return;
+        }
+        try {
+          resolve({ videoId: match[1], title: JSON.parse(`"${match[2]}"`) });
+        } catch (error) {
+          reject(new Error('YouTube video search returned invalid song details', { cause: error }));
+        }
+      });
+    });
+    request.setTimeout(8000, () => request.destroy(new Error('YouTube video search timed out')));
+    request.on('error', reject);
+  });
+});
 ipcMain.handle('sonora:load-library', async () => {
   const libraryPath = path.join(app.getPath('userData'), 'sonora-library.json');
   try {
@@ -693,6 +737,12 @@ ipcMain.handle('sonora:update-library-song', async (_event, update) => {
   if (Object.hasOwn(update.fields, 'customTitle')) {
     if (typeof update.fields.customTitle !== 'boolean') throw new Error('Invalid custom title value');
     fields.customTitle = update.fields.customTitle;
+  }
+  if (Object.hasOwn(update.fields, 'videoId')) {
+    if (typeof update.fields.videoId !== 'string' || !/^[\w-]{11}$/.test(update.fields.videoId)) {
+      throw new Error('Invalid related video ID');
+    }
+    fields.videoId = update.fields.videoId;
   }
   if (!Object.keys(fields).length) throw new Error('Song update contains no supported fields');
   const filePath = path.join(app.getPath('userData'), 'sonora-library.json');

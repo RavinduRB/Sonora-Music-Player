@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('sonora', {
   minimize: () => ipcRenderer.send('sonora:minimize'),
   close: () => ipcRenderer.send('sonora:close'),
   getYoutubeMetadata: (url) => ipcRenderer.invoke('sonora:youtube-metadata', url),
+  findYoutubeVideo: (title, artist) => ipcRenderer.invoke('sonora:find-youtube-video', title, artist),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   loadLibrary: () => ipcRenderer.invoke('sonora:load-library'),
   persistLibrary: (library) => ipcRenderer.invoke('sonora:persist-library', library),

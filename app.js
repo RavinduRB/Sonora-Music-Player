@@ -21,7 +21,8 @@ const ICONS = {
   muted: svg(`<path fill="currentColor" d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path ${stroke} d="m16 9.5 5 5M21 9.5l-5 5"/>`, 13),
   sun: svg(`<circle ${stroke} cx="12" cy="12" r="4"/><path ${stroke} d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/>`, 15),
   moon: svg(`<path ${stroke} d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/>`, 14),
-  auto: svg(`<circle ${stroke} cx="12" cy="12" r="8.5"/><path fill="currentColor" d="M12 3.5a8.5 8.5 0 0 1 0 17z"/>`, 14)
+  auto: svg(`<circle ${stroke} cx="12" cy="12" r="8.5"/><path fill="currentColor" d="M12 3.5a8.5 8.5 0 0 1 0 17z"/>`, 14),
+  video: svg(`<rect ${stroke} x="3" y="5" width="13" height="14" rx="2"/><path ${stroke} d="m16 10 5-3v10l-5-3"/>`, 14)
 };
 
 const THEME_MODES = ['auto', 'light', 'dark'];
@@ -47,10 +48,14 @@ let repeatMode = 'off';
 let pinned = true;
 const pendingYoutubeSongIds = new Set();
 const pendingYoutubeWrites = new Set();
+const relatedVideoSearches = new Map();
 let youtubePlayer = null;
 let youtubeReady = null;
 let youtubeTimer = null;
 let pendingPlaylistSetup = false;
+let videoOpen = false;
+let localVideoSongId = null;
+let resumeLocalAudioAfterVideo = false;
 let volumeLevel = 78;
 let lastVolume = 78;
 let muted = false;
@@ -63,6 +68,22 @@ let rendering = false;
 
 const activeSong = () => songs[activeIndex];
 const isPlaylist = (song) => song?.type === 'youtube' && Boolean(song.playlistId);
+const isValidYoutubeVideoId = (id) => typeof id === 'string' && /^[\w-]{11}$/.test(id);
+const hasSongVideo = (song) => song?.type === 'youtube'
+  ? Boolean(isPlaylist(song) || youtubeId(song.url))
+  : song?.type === 'local' && isValidYoutubeVideoId(song.videoId);
+const isLocalVideoActive = () => {
+  const song = activeSong();
+  return Boolean(videoOpen && song?.type === 'local' && localVideoSongId === song.id);
+};
+const isYoutubePlaybackActive = () => activeSong()?.type === 'youtube' || isLocalVideoActive();
+function updateYoutubePlayerSize() {
+  if (!videoOpen || !youtubePlayer?.setSize) return;
+  const frame = $('#videoFrame');
+  const width = Math.floor(frame.clientWidth);
+  const height = Math.floor(frame.clientHeight);
+  if (width > 0 && height > 0) youtubePlayer.setSize(width, height);
+}
 function newId() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 
 function setPlayingState(playing) {
@@ -93,19 +114,22 @@ function prepareYoutubePlayer() {
   youtubeReady = new Promise((resolve, reject) => {
     window.onYouTubeIframeAPIReady = () => {
       youtubePlayer = new window.YT.Player('youtubePlayer', {
-        height: '1',
-        width: '1',
-        playerVars: { autoplay: 0, controls: 0, disablekb: 1, playsinline: 1, rel: 0, origin: window.location.origin },
+        height: videoOpen ? Math.max(1, Math.floor($('#videoFrame').clientHeight)) : '1',
+        width: videoOpen ? Math.max(1, Math.floor($('#videoFrame').clientWidth)) : '1',
+        playerVars: { autoplay: 0, controls: 1, disablekb: 0, playsinline: 1, rel: 0, origin: window.location.origin },
         events: {
           onReady: () => {
             youtubePlayer.setVolume(volumeLevel);
+            youtubePlayer.getIframe().title = 'YouTube song video';
+            updateYoutubePlayerSize();
             resolve(youtubePlayer);
           },
           onStateChange: handleYoutubeState,
           onError: (event) => {
-            if (activeSong()?.type !== 'youtube') return;
+            if (!isYoutubePlaybackActive()) return;
+            if (isLocalVideoActive()) setVideoOpen(false);
             setPlayingState(false);
-            showToast(YOUTUBE_ERRORS[event.data] || 'This video cannot be played in the widget');
+            showToast(YOUTUBE_ERRORS[event.data] || 'This song video cannot be played in the widget');
           }
         }
       });
@@ -124,20 +148,26 @@ function prepareYoutubePlayer() {
 }
 
 function handleYoutubeState(event) {
-  if (activeSong()?.type !== 'youtube') return;
+  if (!isYoutubePlaybackActive()) return;
   const states = window.YT.PlayerState;
   if (event.data === states.PLAYING) {
     setPlayingState(true);
     startYoutubeTimer();
-    applyPlaylistSettings();
-    syncPlaylistTrack();
+    if (activeSong()?.type === 'youtube') {
+      applyPlaylistSettings();
+      syncPlaylistTrack();
+    }
   } else if (event.data === states.PAUSED) {
     setPlayingState(false);
+    if (isLocalVideoActive()) resumeLocalAudioAfterVideo = false;
   } else if (event.data === states.CUED) {
-    applyPlaylistSettings();
-    syncPlaylistTrack();
+    if (activeSong()?.type === 'youtube') {
+      applyPlaylistSettings();
+      syncPlaylistTrack();
+    }
   } else if (event.data === states.ENDED) {
     setPlayingState(false);
+    if (isLocalVideoActive()) resumeLocalAudioAfterVideo = false;
     handleEnded();
   }
 }
@@ -170,7 +200,7 @@ function stopYoutube() {
 function startYoutubeTimer() {
   clearInterval(youtubeTimer);
   youtubeTimer = setInterval(() => {
-    if (!youtubePlayer || activeSong()?.type !== 'youtube') return;
+    if (!youtubePlayer || !isYoutubePlaybackActive()) return;
     const current = youtubePlayer.getCurrentTime();
     const duration = youtubePlayer.getDuration();
     $('#currentTime').textContent = formatTime(current);
@@ -206,8 +236,8 @@ function saveSongs() {
   }
 }
 function serializedSongs() {
-  return songs.map(({ id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, favorite, customTitle }) => ({
-    id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, favorite, customTitle
+  return songs.map(({ id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, favorite, customTitle, videoId }) => ({
+    id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, favorite, customTitle, videoId
   }));
 }
 function clearBrowserLibraryCache() {
@@ -393,6 +423,102 @@ function showTrack(song) {
   $('#trackTitle').textContent = song ? song.title : 'Your quiet space';
   $('#trackArtist').textContent = song ? subtitleFor(song) : 'Add a song to begin';
   refreshFavoriteButton();
+  refreshVideoButton(song);
+}
+function refreshVideoButton(song = activeSong()) {
+  const button = $('#videoButton');
+  const available = hasSongVideo(song);
+  button.hidden = !available;
+  button.innerHTML = ICONS.video;
+  button.classList.toggle('active', videoOpen);
+  button.title = videoOpen ? 'Hide song video' : 'Show song video';
+  button.setAttribute('aria-label', button.title);
+  button.setAttribute('aria-pressed', String(videoOpen));
+  $('.now-playing').classList.toggle('has-video', available);
+}
+function resizeWidgetForPanels() {
+  const libraryOpen = widget.classList.contains('library-open');
+  window.sonora?.resize(libraryOpen ? (videoOpen ? 760 : 660) : (videoOpen ? 340 : 150));
+}
+function setVideoOpen(open) {
+  const song = activeSong();
+  const nextOpen = Boolean(open && hasSongVideo(song));
+  if (videoOpen === nextOpen) return;
+
+  if (!nextOpen) {
+    const closingLocalVideo = videoOpen && song?.type === 'local';
+    const shouldResumeLocalAudio = resumeLocalAudioAfterVideo && closingLocalVideo;
+    videoOpen = false;
+    widget.classList.remove('video-open');
+    if (closingLocalVideo) {
+      youtubePlayer?.stopVideo();
+      localVideoSongId = null;
+    }
+    resumeLocalAudioAfterVideo = false;
+    if (shouldResumeLocalAudio && activeSong()?.id === song.id && audio.paused) {
+      audio.play().catch(() => showToast('This audio file cannot be played'));
+    }
+    refreshVideoButton();
+    resizeWidgetForPanels();
+    return;
+  }
+
+  videoOpen = true;
+  widget.classList.add('video-open');
+  if (song.type === 'local') {
+    resumeLocalAudioAfterVideo = !audio.paused;
+    if (resumeLocalAudioAfterVideo) audio.pause();
+    localVideoSongId = song.id;
+  }
+  refreshVideoButton();
+  resizeWidgetForPanels();
+  requestAnimationFrame(() => {
+    updateYoutubePlayerSize();
+    prepareYoutubePlayer().then((player) => {
+      if (!videoOpen || activeSong()?.id !== song.id) return;
+      updateYoutubePlayerSize();
+      if (song.type === 'local') {
+        player.setVolume(volumeLevel);
+        player.unMute();
+        player.loadVideoById(song.videoId);
+        startYoutubeTimer();
+      }
+    }).catch((error) => {
+      console.error('Could not show the related song video:', error);
+      if (song.type === 'local') setVideoOpen(false);
+      setPlayingState(false);
+      showToast('Could not load the song video');
+    });
+  });
+}
+function findRelatedVideo(song) {
+  if (song.type !== 'local' || hasSongVideo(song) || !window.sonora?.findYoutubeVideo) return;
+  if (relatedVideoSearches.has(song.id)) return relatedVideoSearches.get(song.id);
+
+  const searchTitle = song.title;
+  const originalArtist = song.artist;
+  const searchArtist = typeof song.artist === 'string' && song.artist !== 'Local audio' ? song.artist : '';
+  const search = window.sonora.findYoutubeVideo(searchTitle, searchArtist).then(async (result) => {
+    if (!isValidYoutubeVideoId(result?.videoId)
+      || !songs.some((item) => item.id === song.id)
+      || song.title !== searchTitle || song.artist !== originalArtist) return;
+    song.videoId = result.videoId;
+    if (activeSong()?.id === song.id) showTrack(song);
+    renderSongs();
+    try {
+      const updated = await window.sonora.updateLibrarySong({ id: song.id, fields: { videoId: result.videoId } });
+      if (!updated) throw new Error('Song is missing from the saved library');
+      clearBrowserLibraryCache();
+    } catch (error) {
+      console.error('Could not save the related video for this song:', error);
+      if (activeSong()?.id === song.id) showToast('Video found, but could not save its association');
+    }
+  }).catch((error) => {
+    console.error('Could not search for a related song video:', error);
+    if (activeSong()?.id === song.id) showToast('Could not search for a related song video');
+  }).finally(() => relatedVideoSearches.delete(song.id));
+  relatedVideoSearches.set(song.id, search);
+  return search;
 }
 function refreshFavoriteButton() {
   const button = $('#favoriteButton');
@@ -463,6 +589,10 @@ async function enrichYoutubeSong(song, { persist = true } = {}) {
 function setActive(index, autoplay = false, { back = false } = {}) {
   const song = songs[index]; if (!song) return;
   const previous = activeSong();
+  if (previous && previous.id !== song.id) {
+    resumeLocalAudioAfterVideo = false;
+    setVideoOpen(false);
+  }
   if (!back && previous && previous.id !== song.id) {
     playHistory.push(previous.id);
     if (playHistory.length > 100) playHistory.shift();
@@ -473,6 +603,7 @@ function setActive(index, autoplay = false, { back = false } = {}) {
   const token = ++loadToken;
   if (song.type === 'local') {
     audio.src = song.url;
+    findRelatedVideo(song);
   } else {
     audio.removeAttribute('src'); audio.load();
     prepareYoutubePlayer().then((player) => {
@@ -495,6 +626,9 @@ function setActive(index, autoplay = false, { back = false } = {}) {
 }
 
 function clearActive() {
+  resumeLocalAudioAfterVideo = false;
+  setVideoOpen(false);
+  localVideoSongId = null;
   loadToken++;
   activeIndex = -1;
   audio.pause(); audio.removeAttribute('src'); audio.load();
@@ -506,7 +640,11 @@ function clearActive() {
 
 function stopPlayback() {
   setPlayingState(false);
-  if (activeSong()?.type === 'youtube') { clearInterval(youtubeTimer); youtubePlayer?.pauseVideo(); }
+  if (isYoutubePlaybackActive()) {
+    clearInterval(youtubeTimer);
+    youtubePlayer?.pauseVideo();
+    if (isLocalVideoActive()) resumeLocalAudioAfterVideo = false;
+  }
 }
 
 // Moves inside a YouTube playlist first; returns false when the library should advance instead
@@ -550,6 +688,11 @@ function changeSong(direction = 1, auto = false) {
 }
 
 function handleEnded() {
+  if (isLocalVideoActive() && (repeatMode === 'one' || (repeatMode === 'all' && songs.length === 1))) {
+    youtubePlayer.seekTo(0, true);
+    youtubePlayer.playVideo();
+    return;
+  }
   if (repeatMode === 'one' && !isPlaylist(activeSong())) return setActive(activeIndex, true);
   changeSong(1, true);
 }
@@ -668,7 +811,7 @@ function addYoutube() {
 function togglePlayback() {
   const song = activeSong();
   if (!song) return songs.length ? setActive(0, true) : showToast('Add a song first');
-  if (song.type === 'youtube') {
+  if (song.type === 'youtube' || isLocalVideoActive()) {
     prepareYoutubePlayer().then((player) => {
       const states = window.YT.PlayerState;
       const state = player.getPlayerState();
@@ -693,7 +836,7 @@ function setLibraryOpen(open) {
   button.title = open ? 'Close library' : 'Open library';
   button.setAttribute('aria-label', button.title);
   button.setAttribute('aria-expanded', String(open));
-  window.sonora?.resize(open ? 660 : 150);
+  resizeWidgetForPanels();
 }
 
 function updateModeButtons() {
@@ -716,7 +859,7 @@ audio.addEventListener('timeupdate', () => { $('#seekBar').value = audio.duratio
 audio.addEventListener('loadedmetadata', () => { $('#duration').textContent = formatTime(audio.duration); });
 audio.addEventListener('ended', () => { if (activeSong()?.type === 'local') handleEnded(); });
 $('#seekBar').addEventListener('input', (event) => {
-  if (activeSong()?.type === 'youtube' && youtubePlayer) {
+  if (isYoutubePlaybackActive() && youtubePlayer) {
     youtubePlayer.seekTo((event.target.value / 100) * youtubePlayer.getDuration(), true);
   } else if (audio.duration) audio.currentTime = (event.target.value / 100) * audio.duration;
 });
@@ -770,6 +913,7 @@ $('#pinButton').addEventListener('click', (event) => {
   showToast(pinned ? 'Widget pinned to desktop' : 'Widget unpinned');
 });
 $('#libraryButton').addEventListener('click', () => setLibraryOpen(!widget.classList.contains('library-open')));
+$('#videoButton').addEventListener('click', () => setVideoOpen(!videoOpen));
 $('#closeLibrary').addEventListener('click', () => setLibraryOpen(false));
 $('#minimizeButton').addEventListener('click', () => window.sonora?.minimize());
 $('#closeButton').addEventListener('click', () => window.sonora?.close());
