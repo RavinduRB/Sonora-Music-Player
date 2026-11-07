@@ -49,6 +49,7 @@ let pinned = true;
 const pendingYoutubeSongIds = new Set();
 const pendingYoutubeWrites = new Set();
 const relatedVideoSearches = new Map();
+const pendingSongIdentityKeys = new Set();
 let youtubePlayer = null;
 let youtubeReady = null;
 let youtubeTimer = null;
@@ -315,6 +316,33 @@ function youtubePlaylistId(url) {
   } catch { return null; }
 }
 const subtitleFor = (song) => song.artist || (song.type === 'youtube' ? 'YouTube' : 'Local audio');
+function normalizeSongIdentityPart(value) {
+  return String(value || '').normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+function songIdentityKey(song) {
+  if (song?.type === 'youtube') {
+    const playlistId = song.playlistId || youtubePlaylistId(song.url);
+    if (playlistId) return `youtube-playlist:${playlistId}`;
+    const videoId = youtubeId(song.url);
+    return videoId ? `youtube-video:${videoId}` : null;
+  }
+  if (song?.type === 'local') {
+    const title = normalizeSongIdentityPart(song.title);
+    const artist = normalizeSongIdentityPart(song.artist || 'Local audio');
+    return title ? `local:${title}:${artist}` : null;
+  }
+  return null;
+}
+function withoutDuplicateSongs(list) {
+  const seen = new Set();
+  return list.filter((song) => {
+    const key = songIdentityKey(song);
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 function renderSongs() {
   rendering = true;
@@ -711,11 +739,29 @@ function isAudioFile(file) {
 async function addLocalFiles(files) {
   const audioFiles = [...files].filter(isAudioFile);
   if (!audioFiles.length) return showToast('Drop audio files only');
+  const knownKeys = new Set(songs.map(songIdentityKey).filter(Boolean));
+  pendingSongIdentityKeys.forEach((key) => knownKeys.add(key));
+  const candidateFiles = [];
+  const reservedKeys = [];
+  let duplicateCount = 0;
+  for (const file of audioFiles) {
+    const key = songIdentityKey({ type: 'local', title: titleFromFile(file.name), artist: 'Local audio' });
+    if (knownKeys.has(key)) {
+      duplicateCount++;
+      continue;
+    }
+    knownKeys.add(key);
+    pendingSongIdentityKeys.add(key);
+    reservedKeys.push(key);
+    candidateFiles.push(file);
+  }
+  if (!candidateFiles.length) return showToast('These songs are already in your library');
+
   const useStreamingImport = Boolean(window.sonora?.addLocalSongs && window.sonora?.getPathForFile);
   let imported = [];
   try {
     if (useStreamingImport) {
-      const localImports = audioFiles.map((file) => {
+      const localImports = candidateFiles.map((file) => {
         const sourcePath = window.sonora.getPathForFile(file);
         if (!sourcePath) throw new Error(`Could not resolve ${file.name}`);
         const song = {
@@ -737,7 +783,7 @@ async function addLocalFiles(files) {
       if (!added) throw new Error('The saved library is unavailable');
       clearBrowserLibraryCache();
     } else {
-      imported = await Promise.all(audioFiles.map(async (file) => ({
+      imported = await Promise.all(candidateFiles.map(async (file) => ({
         id: newId(),
         title: titleFromFile(file.name),
         artist: 'Local audio',
@@ -750,13 +796,17 @@ async function addLocalFiles(files) {
     if (!useStreamingImport) saveSongs();
     if (activeIndex < 0 && songs.length) setActive(0);
     else renderSongs();
-    showToast(`${imported.length} audio file${imported.length !== 1 ? 's' : ''} added`);
+    showToast(duplicateCount
+      ? `${imported.length} added; ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} skipped`
+      : `${imported.length} audio file${imported.length !== 1 ? 's' : ''} added`);
   } catch (error) {
     imported.forEach((song) => {
       if (song.url.startsWith('blob:')) URL.revokeObjectURL(song.url);
     });
     console.error('Could not save the selected audio file:', error);
     showToast('Could not save the selected audio file');
+  } finally {
+    reservedKeys.forEach((key) => pendingSongIdentityKeys.delete(key));
   }
 }
 function addYoutube() {
@@ -768,6 +818,11 @@ function addYoutube() {
   const song = playlistId
     ? { id: newId(), title: 'YouTube playlist', artist: 'YouTube', type: 'youtube', playlistId, url: `https://www.youtube.com/playlist?list=${playlistId}`, favorite: false }
     : { id: newId(), title: `YouTube · ${id}`, artist: 'YouTube', type: 'youtube', url, favorite: false };
+  if (songs.some((existing) => songIdentityKey(existing) === songIdentityKey(song))) {
+    $('#youtubeInput').value = '';
+    $('#youtubeDialog').classList.remove('open');
+    return showToast('This song is already in your library');
+  }
   songs.push(song);
   $('#youtubeInput').value = '';
   $('#youtubeDialog').classList.remove('open');
