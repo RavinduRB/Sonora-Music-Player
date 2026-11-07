@@ -45,6 +45,7 @@ let activeIndex = -1;
 let shuffled = false;
 let repeatMode = 'off';
 let pinned = true;
+const pendingYoutubeSongIds = new Set();
 let youtubePlayer = null;
 let youtubeReady = null;
 let youtubeTimer = null;
@@ -277,7 +278,7 @@ function renderSongs() {
       <span class="song-info">${title}<small>${escapeHtml(subtitle)}</small></span>
       <button class="item-action fav-song ${song.favorite ? 'on' : ''}" data-favorite="${index}" title="${song.favorite ? 'Remove from favorites' : 'Add to favorites'}" aria-label="Toggle favorite for ${escapeHtml(song.title)}">${song.favorite ? ICONS.heartFilled : ICONS.heart}</button>
       <button class="item-action rename-song" data-rename="${index}" title="Rename" aria-label="Rename ${escapeHtml(song.title)}">${ICONS.edit}</button>
-      <button class="remove-song" data-remove="${index}" title="Remove" aria-label="Remove ${escapeHtml(song.title)}">×</button>
+      <button class="remove-song" data-remove="${index}" title="${pendingYoutubeSongIds.has(song.id) ? 'Adding song' : 'Remove'}" aria-label="Remove ${escapeHtml(song.title)}" ${pendingYoutubeSongIds.has(song.id) ? 'disabled' : ''}>×</button>
     </li>`;
   }).join('');
   const input = list.querySelector('.rename-input');
@@ -371,8 +372,8 @@ function toggleFavorite(index) {
   showToast(song.favorite ? 'Added to favorites' : 'Removed from favorites');
 }
 
-async function enrichYoutubeSong(song) {
-  if (song.type !== 'youtube' || song.metadataLoaded) return;
+async function enrichYoutubeSong(song, { persist = true } = {}) {
+  if (song.type !== 'youtube' || song.metadataLoaded || (persist && pendingYoutubeSongIds.has(song.id))) return;
   try {
     const endpoint = `https://www.youtube.com/oembed?url=${encodeURIComponent(song.url)}&format=json`;
     const metadata = window.sonora?.getYoutubeMetadata
@@ -389,10 +390,24 @@ async function enrichYoutubeSong(song) {
     song.artist = metadata.artist || song.artist || 'YouTube';
     song.thumbnail = metadata.thumbnail || '';
     song.metadataLoaded = true;
-    saveSongs();
+    if (!persist) {
+      renderSongs();
+      if (song === activeSong()) { showTrack(song); syncPlaylistTrack(); }
+      return;
+    }
+    if (window.sonora?.updateYoutubeMetadata) {
+      const updated = await window.sonora.updateYoutubeMetadata({
+        id: song.id,
+        title: song.title,
+        artist: song.artist,
+        thumbnail: song.thumbnail
+      });
+      if (!updated) throw new Error('YouTube song is missing from the saved library');
+    } else saveSongs();
     if (song === activeSong()) { showTrack(song); syncPlaylistTrack(); }
-  } catch {
-    if (song === activeSong()) showToast('Could not load YouTube song details');
+  } catch (error) {
+    console.error('Could not load or save YouTube song details:', error);
+    if (song === activeSong()) showToast('Could not load or save YouTube song details');
   }
 }
 
@@ -531,11 +546,42 @@ function addYoutube() {
     ? { id: newId(), title: 'YouTube playlist', artist: 'YouTube', type: 'youtube', playlistId, url: `https://www.youtube.com/playlist?list=${playlistId}`, favorite: false }
     : { id: newId(), title: `YouTube · ${id}`, artist: 'YouTube', type: 'youtube', url, favorite: false };
   songs.push(song);
-  saveSongs(); if (activeIndex < 0) setActive(0);
-  enrichYoutubeSong(song);
   $('#youtubeInput').value = '';
   $('#youtubeDialog').classList.remove('open');
-  showToast(playlistId ? 'YouTube playlist added' : 'YouTube song added');
+  pendingYoutubeSongIds.add(song.id);
+  const persistPromise = (async () => {
+    await enrichYoutubeSong(song, { persist: false });
+    pendingYoutubeSongIds.delete(song.id);
+    if (window.sonora?.addYoutubeSong) {
+      const added = await window.sonora.addYoutubeSong(song);
+      if (!added) await window.sonora.persistLibrary(serializedSongs());
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (error) {
+        console.error('Could not clear the browser library cache:', error);
+      }
+      renderSongs();
+    } else saveSongs();
+  })();
+  if (activeIndex < 0) setActive(0);
+  else renderSongs();
+  showToast('Adding YouTube song…');
+  persistPromise.then(() => {
+    if (!songs.some((item) => item.id === song.id)) return;
+    showToast(playlistId ? 'YouTube playlist added' : 'YouTube song added');
+    enrichYoutubeSong(song);
+  }).catch((error) => {
+    pendingYoutubeSongIds.delete(song.id);
+    console.error('Could not add YouTube song to the saved library:', error);
+    const index = songs.findIndex((item) => item.id === song.id);
+    if (index >= 0) {
+      if (activeSong()?.id === song.id) clearActive();
+      else if (index < activeIndex) activeIndex--;
+      songs.splice(index, 1);
+      renderSongs();
+    }
+    showToast('Could not add YouTube song to the saved library');
+  });
 }
 
 function togglePlayback() {
