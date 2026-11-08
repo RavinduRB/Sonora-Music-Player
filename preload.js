@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('sonora', {
   minimize: () => ipcRenderer.send('sonora:minimize'),
   close: () => ipcRenderer.send('sonora:close'),
+  getSpotifyMetadata: (url) => ipcRenderer.invoke('sonora:spotify-metadata', url),
   getYoutubeMetadata: (url) => ipcRenderer.invoke('sonora:youtube-metadata', url),
   findYoutubeVideo: (title, artist) => ipcRenderer.invoke('sonora:find-youtube-video', title, artist),
   getPathForFile: (file) => webUtils.getPathForFile(file),

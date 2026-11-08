@@ -219,7 +219,7 @@ function normalizeSongs(list) {
   const cleaned = (Array.isArray(list) ? list : []).filter((song) => song && song.title && ['local', 'youtube'].includes(song.type)).map((song) => {
     const id = song.id && !seen.has(song.id) ? song.id : newId();
     seen.add(id);
-    return { ...song, id, favorite: Boolean(song.favorite) };
+    return { ...song, id, spotifyUrl: spotifyTrackUrl(song.spotifyUrl) || undefined, favorite: Boolean(song.favorite) };
   });
   return [...cleaned.filter((song) => song.favorite), ...cleaned.filter((song) => !song.favorite)];
 }
@@ -237,8 +237,8 @@ function saveSongs() {
   }
 }
 function serializedSongs() {
-  return songs.map(({ id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, favorite, customTitle, videoId }) => ({
-    id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, favorite, customTitle, videoId
+  return songs.map(({ id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, spotifyUrl, favorite, customTitle, videoId }) => ({
+    id, title, artist, type, url, thumbnail, metadataLoaded, playlistId, spotifyUrl, favorite, customTitle, videoId
   }));
 }
 function clearBrowserLibraryCache() {
@@ -315,7 +315,19 @@ function youtubePlaylistId(url) {
     return list && /^[\w-]+$/.test(list) && !list.startsWith('RD') ? list : null;
   } catch { return null; }
 }
-const subtitleFor = (song) => song.artist || (song.type === 'youtube' ? 'YouTube' : 'Local audio');
+function spotifyTrackId(url) {
+  try {
+    if (typeof url !== 'string') return null;
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'open.spotify.com') return null;
+    return parsed.pathname.match(/^\/(?:intl-[a-z]{2}\/)?track\/([A-Za-z0-9]{22})\/?$/i)?.[1] || null;
+  } catch { return null; }
+}
+function spotifyTrackUrl(url) {
+  const id = spotifyTrackId(url);
+  return id ? `https://open.spotify.com/track/${id}` : null;
+}
+const subtitleFor = (song) => song.artist || (song.spotifyUrl ? 'Spotify link · YouTube playback' : song.type === 'youtube' ? 'YouTube' : 'Local audio');
 function normalizeSongIdentityPart(value) {
   return String(value || '').normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
 }
@@ -813,7 +825,11 @@ function addYoutube() {
   if (!url) return;
   const playlistId = youtubePlaylistId(url);
   const id = youtubeId(url);
-  if (!playlistId && !id) return showToast('Enter a valid YouTube video or playlist URL');
+  if (!playlistId && !id) {
+    const spotifyId = spotifyTrackId(url);
+    if (spotifyId) return addSpotifySong(url, spotifyId);
+    return showToast('Enter a valid YouTube video, playlist, or Spotify track URL');
+  }
   const song = playlistId
     ? { id: newId(), title: 'YouTube playlist', artist: 'YouTube', type: 'youtube', playlistId, url: `https://www.youtube.com/playlist?list=${playlistId}`, favorite: false }
     : { id: newId(), title: `YouTube · ${id}`, artist: 'YouTube', type: 'youtube', url, favorite: false };
@@ -822,12 +838,63 @@ function addYoutube() {
     $('#youtubeDialog').classList.remove('open');
     return showToast('This song is already in your library');
   }
+  persistYoutubeSong(song, playlistId ? 'YouTube playlist' : 'YouTube song');
+}
+async function addSpotifySong(url, trackId) {
+  const pendingKey = `spotify-track:${trackId}`;
+  if (songs.some((song) => spotifyTrackId(song.spotifyUrl) === trackId)) {
+    $('#youtubeInput').value = '';
+    $('#youtubeDialog').classList.remove('open');
+    return showToast('This song is already in your library');
+  }
+  if (pendingSongIdentityKeys.has(pendingKey)) return showToast('This Spotify song is already being added');
+  pendingSongIdentityKeys.add(pendingKey);
+  const submitButton = $('#saveYoutube');
+  submitButton.disabled = true;
+  showToast('Looking up Spotify track…');
+  try {
+    if (!window.sonora?.getSpotifyMetadata || !window.sonora?.findYoutubeVideo) {
+      throw new Error('Spotify lookup is unavailable');
+    }
+    const metadata = await window.sonora.getSpotifyMetadata(url);
+    if (typeof metadata?.title !== 'string' || !metadata.title.trim()) {
+      throw new Error('Spotify did not return a track title');
+    }
+    const match = await window.sonora.findYoutubeVideo(metadata.title, metadata.artist || '');
+    if (!isValidYoutubeVideoId(match?.videoId)) throw new Error('No matching YouTube song was found');
+    const song = {
+      id: newId(),
+      title: metadata.title.trim(),
+      artist: typeof metadata.artist === 'string' ? metadata.artist.trim() : '',
+      type: 'youtube',
+      url: `https://www.youtube.com/watch?v=${match.videoId}`,
+      thumbnail: typeof metadata.thumbnail === 'string' ? metadata.thumbnail : '',
+      metadataLoaded: true,
+      spotifyUrl: spotifyTrackUrl(url),
+      favorite: false
+    };
+    if (songs.some((existing) => songIdentityKey(existing) === songIdentityKey(song))) {
+      $('#youtubeInput').value = '';
+      $('#youtubeDialog').classList.remove('open');
+      showToast('This song is already in your library');
+      return;
+    }
+    persistYoutubeSong(song, 'Spotify song');
+  } catch (error) {
+    console.error('Could not resolve the Spotify song to a YouTube match:', error);
+    showToast('Could not find a playable YouTube match for that Spotify song');
+  } finally {
+    pendingSongIdentityKeys.delete(pendingKey);
+    submitButton.disabled = false;
+  }
+}
+function persistYoutubeSong(song, label) {
   songs.push(song);
   $('#youtubeInput').value = '';
   $('#youtubeDialog').classList.remove('open');
   pendingYoutubeSongIds.add(song.id);
   const persistPromise = (async () => {
-    await enrichYoutubeSong(song, { persist: false });
+    if (!song.metadataLoaded) await enrichYoutubeSong(song, { persist: false });
     pendingYoutubeSongIds.delete(song.id);
     if (window.sonora?.addYoutubeSong) {
       const added = await window.sonora.addYoutubeSong(song);
@@ -843,10 +910,10 @@ function addYoutube() {
   pendingYoutubeWrites.add(persistPromise);
   if (activeIndex < 0) setActive(0);
   else renderSongs();
-  showToast('Adding YouTube song…');
+  showToast(`Adding ${label.toLowerCase()}…`);
   persistPromise.then(() => {
     if (!songs.some((item) => item.id === song.id)) return;
-    showToast(playlistId ? 'YouTube playlist added' : 'YouTube song added');
+    showToast(`${label} added`);
     enrichYoutubeSong(song);
   }).catch((error) => {
     pendingYoutubeSongIds.delete(song.id);

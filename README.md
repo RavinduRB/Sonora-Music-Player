@@ -14,6 +14,7 @@ The widget is designed to stay small, remain above other applications, and provi
 - **HTML5 Audio API** - Local audio playback
 - **YouTube IFrame Player API** - Embedded audio-only YouTube video and playlist playback
 - **YouTube oEmbed API** - Song title, channel/artist, and thumbnail metadata
+- **Spotify oEmbed API** - Public track details for matching Spotify links to YouTube playback
 - **Node.js HTTPS and filesystem APIs** - Metadata requests and library persistence
 - **Electron desktopCapturer** - Measures the desktop brightness behind the widget for the automatic light/dark appearance
 - **DM Sans and Playfair Display** - Typography loaded from Google Fonts (falls back to system fonts offline)
@@ -29,6 +30,7 @@ The widget is designed to stay small, remain above other applications, and provi
 - Local MP3, WAV, OGG, M4A, AAC, FLAC, Opus, and other browser-supported audio files
 - Drag-and-drop audio importing
 - YouTube video and playlist URL importing (youtube.com, music.youtube.com, and youtu.be)
+- Spotify track URL importing with automatic YouTube matching for playback
 - Audio-only YouTube playback inside the widget, including full playlists
 - No external browser window for YouTube playback
 - YouTube title and channel/artist metadata extraction
@@ -198,11 +200,11 @@ Supported files depend on the audio formats supported by the browser engine, inc
 
 Imported local audio is embedded in the Sonora library data (as a data URL) so it can be played again after restarting the widget. Very large files make the library file large.
 
-### 5. Add a YouTube song
+### 5. Add a YouTube or Spotify song
 
 1. Click the library icon.
-2. Click **YouTube link**.
-3. Paste a YouTube URL.
+2. Click **YouTube or Spotify**.
+3. Paste a YouTube video or playlist URL, or a Spotify track URL.
 4. Click **Add song**.
 
 Supported URL styles include:
@@ -214,6 +216,8 @@ Supported URL styles include:
 - YouTube Shorts links
 - YouTube embed links
 - YouTube live links
+
+Spotify track links are looked up using Spotify's public embed metadata, then matched to a YouTube video. Sonora plays that YouTube match; a Spotify link does not provide direct Spotify audio playback and no Spotify login is required. Spotify playlists and albums are not supported.
 
 ### 5a. Play a YouTube playlist
 
@@ -322,7 +326,7 @@ The widget remains visible in screen recordings and screenshots. Automatic theme
 - The theme choice is saved as `sonora-settings.json` in the same directory.
 - The Save button creates a JSON copy at the location selected by the user (default folder: Downloads).
 - The widget is visible in screen capture; the app samples nearby screen pixels for automatic theme selection and does not store or transmit screenshots.
-- YouTube links use YouTube services for audio playback and public metadata.
+- YouTube links use YouTube services for audio playback and public metadata. Spotify track links use Spotify's public embed metadata and YouTube search to find a playable match.
 - No account login is required by Sonora.
 
 ## Troubleshooting

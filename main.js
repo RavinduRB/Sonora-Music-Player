@@ -7,6 +7,20 @@ const { pipeline } = require('stream/promises');
 
 let mainWindow;
 let localServer;
+function spotifyTrackId(url) {
+  try {
+    if (typeof url !== 'string') return null;
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'open.spotify.com') return null;
+    return parsed.pathname.match(/^\/(?:intl-[a-z]{2}\/)?track\/([A-Za-z0-9]{22})\/?$/i)?.[1] || null;
+  } catch {
+    return null;
+  }
+}
+function spotifyTrackUrl(url) {
+  const id = spotifyTrackId(url);
+  return id ? `https://open.spotify.com/track/${id}` : null;
+}
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -105,6 +119,48 @@ app.on('activate', () => { if (!mainWindow) createWindow(); });
 
 ipcMain.on('sonora:minimize', () => mainWindow?.minimize());
 ipcMain.on('sonora:close', () => mainWindow?.close());
+ipcMain.handle('sonora:spotify-metadata', (_event, url) => {
+  const trackUrl = spotifyTrackUrl(url);
+  if (!trackUrl) throw new Error('Invalid Spotify track URL');
+  const endpoint = new URL('https://open.spotify.com/oembed');
+  endpoint.searchParams.set('url', trackUrl);
+  return new Promise((resolve, reject) => {
+    let body = '';
+    const request = https.get(endpoint, { headers: { Accept: 'application/json' } }, (response) => {
+      if (response.statusCode !== 200) {
+        response.resume();
+        reject(new Error(`Spotify metadata request failed with status ${response.statusCode}`));
+        return;
+      }
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 1024 * 1024) request.destroy(new Error('Spotify metadata response was too large'));
+      });
+      response.on('end', () => {
+        try {
+          const metadata = JSON.parse(body);
+          const title = typeof metadata.title === 'string' ? metadata.title.trim() : '';
+          const author = typeof metadata.author_name === 'string' ? metadata.author_name.trim() : '';
+          if (!title || title.length > 200) throw new Error('Spotify metadata did not include a valid track title');
+          resolve({
+            title,
+            artist: author && !/^spotify$/i.test(author) ? author.slice(0, 200) : '',
+            thumbnail: typeof metadata.thumbnail_url === 'string' && metadata.thumbnail_url.startsWith('https://')
+              ? metadata.thumbnail_url
+              : ''
+          });
+        } catch (error) {
+          reject(error instanceof SyntaxError
+            ? new Error('Spotify metadata response was invalid', { cause: error })
+            : error);
+        }
+      });
+    });
+    request.setTimeout(8000, () => request.destroy(new Error('Spotify metadata request timed out')));
+    request.on('error', reject);
+  });
+});
 ipcMain.handle('sonora:youtube-metadata', (_event, url) => new Promise((resolve, reject) => {
   const endpoint = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
   const request = https.get(endpoint, (response) => {
@@ -523,6 +579,8 @@ function validateYoutubeSong(song) {
     || typeof song.url !== 'string') {
     throw new Error('Invalid YouTube song');
   }
+  const spotifyUrl = song.spotifyUrl === undefined ? undefined : spotifyTrackUrl(song.spotifyUrl);
+  if (song.spotifyUrl !== undefined && !spotifyUrl) throw new Error('Invalid Spotify source URL');
   return {
     id: song.id,
     title: song.title,
@@ -532,6 +590,7 @@ function validateYoutubeSong(song) {
     thumbnail: typeof song.thumbnail === 'string' ? song.thumbnail : '',
     metadataLoaded: Boolean(song.metadataLoaded),
     playlistId: typeof song.playlistId === 'string' ? song.playlistId : undefined,
+    spotifyUrl: spotifyUrl || undefined,
     favorite: Boolean(song.favorite),
     customTitle: Boolean(song.customTitle)
   };
