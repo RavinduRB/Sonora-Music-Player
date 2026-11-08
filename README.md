@@ -49,7 +49,7 @@ The widget is designed to stay small, remain above other applications, and provi
 - JSON library import and export
 - Local audio files remain playable after restarting the widget
 - Automatic library restoration after closing and reopening the application
-- Widget excluded from screen capture and screenshots
+- Widget remains visible in screen recordings and screenshots
 - Windows executable build (folder-based or single-file portable)
 
 ## Project structure
@@ -313,7 +313,7 @@ The selected mode is saved and restored the next time Sonora starts.
 
 In automatic mode, Sonora measures the brightness of the desktop behind the widget about every 1.5 seconds. Over a bright background it uses dark text and icons on a light glass panel. Over a dark background it switches to light text and icons on a dark glass panel. A small delay and threshold gap prevent flickering on mid-tone backgrounds. Move the widget over a different window or wallpaper and the colors follow automatically.
 
-To measure only the desktop (and not itself), the widget is excluded from screen capture. As a result, it will not appear in screenshots or screen recordings.
+The widget remains visible in screen recordings and screenshots. Automatic theme detection samples the desktop around the widget so its own appearance does not affect the brightness measurement.
 
 ## Data and privacy
 
@@ -321,7 +321,7 @@ To measure only the desktop (and not itself), the widget is excluded from screen
 - The library is saved as `sonora-library.json` in the Electron application user-data directory (under `%APPDATA%`), with a copy in the app's browser storage. Local audio data is part of this library.
 - The theme choice is saved as `sonora-settings.json` in the same directory.
 - The Save button creates a JSON copy at the location selected by the user (default folder: Downloads).
-- The widget is excluded from screen capture; the app only reads the screen to measure brightness and does not store or transmit screenshots.
+- The widget is visible in screen capture; the app samples nearby screen pixels for automatic theme selection and does not store or transmit screenshots.
 - YouTube links use YouTube services for audio playback and public metadata.
 - No account login is required by Sonora.
 
@@ -352,7 +352,7 @@ Confirm that the file is a supported audio format and import it again through th
 
 ### The colors do not match the background
 
-The light/dark appearance updates about every 1.5 to 3 seconds after the widget moves or the background changes. Mid-tone backgrounds keep the current theme to avoid flickering. The widget is excluded from screen capture so it can measure the desktop behind it; if screen capture is blocked (for example on a locked screen), the last theme is kept.
+The light/dark appearance updates about every 1.5 to 3 seconds after the widget moves or the background changes. Mid-tone backgrounds keep the current theme to avoid flickering. Theme detection samples around the widget; if screen capture is blocked (for example on a locked screen), the last theme is kept.
 
 ### The widget is hidden or cannot be found
 

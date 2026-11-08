@@ -75,7 +75,7 @@ async function createWindow() {
     }
   });
 
-  mainWindow.setContentProtection(true);
+  mainWindow.setContentProtection(false);
   mainWindow.loadURL(`${localUrl}/index.html`);
   mainWindow.once('ready-to-show', () => {
     positionTopRight();
@@ -866,8 +866,7 @@ setInterval(() => {
   }
 }, 50);
 
-// Picks a light or dark UI by measuring the brightness of the desktop behind the widget.
-// The window is excluded from screen capture (see createWindow) so only the desktop is measured.
+// Picks a light or dark UI by measuring the desktop around the recording-visible widget.
 let currentTheme = null;
 let pendingTheme = null;
 let sampling = false;
@@ -892,16 +891,22 @@ async function sampleBackground() {
     if (!source || source.thumbnail.isEmpty()) return;
     const { width, height } = source.thumbnail.getSize();
     const scale = width / display.bounds.width;
-    const left = Math.max(0, Math.floor((bounds.x + widgetRect.x - display.bounds.x) * scale));
-    const top = Math.max(0, Math.floor((bounds.y + widgetRect.y - display.bounds.y) * scale));
-    const right = Math.min(width, Math.ceil((bounds.x + widgetRect.x + widgetRect.width - display.bounds.x) * scale));
-    const bottom = Math.min(height, Math.ceil((bounds.y + widgetRect.y + widgetRect.height - display.bounds.y) * scale));
+    const widgetLeft = (bounds.x + widgetRect.x - display.bounds.x) * scale;
+    const widgetTop = (bounds.y + widgetRect.y - display.bounds.y) * scale;
+    const widgetRight = (bounds.x + widgetRect.x + widgetRect.width - display.bounds.x) * scale;
+    const widgetBottom = (bounds.y + widgetRect.y + widgetRect.height - display.bounds.y) * scale;
+    const padding = Math.round(24 * scale);
+    const left = Math.max(0, Math.floor(widgetLeft - padding));
+    const top = Math.max(0, Math.floor(widgetTop - padding));
+    const right = Math.min(width, Math.ceil(widgetRight + padding));
+    const bottom = Math.min(height, Math.ceil(widgetBottom + padding));
     if (right <= left || bottom <= top) return;
     const pixels = source.thumbnail.toBitmap(); // BGRA
     let total = 0;
     let count = 0;
     for (let y = top; y < bottom; y++) {
       for (let x = left; x < right; x++) {
+        if (x >= widgetLeft && x < widgetRight && y >= widgetTop && y < widgetBottom) continue;
         const i = (y * width + x) * 4;
         total += 0.2126 * pixels[i + 2] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i];
         count++;
