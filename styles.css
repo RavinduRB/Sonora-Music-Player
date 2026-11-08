@@ -109,7 +109,7 @@ body {
 .track-actions .icon-button svg { width: 10px; height: 10px; }
 .track-actions .video-toggle { flex: 0 0 20px; }
 .mini-controls { display: flex; align-items: center; justify-content: flex-end; gap: 2px; flex: 0 0 auto; }
-.library-open .mini-controls { display: none; }
+.library-open .mini-controls, .video-open .mini-controls { display: none; }
 .mini-button { display: grid; place-items: center; width: 17px; height: 17px; padding: 0; border: 0; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; transition: .2s ease; -webkit-app-region: no-drag; }
 .mini-button svg { width: 9px; height: 9px; }
 .mini-button:hover { color: var(--ink); background: var(--hover); }
