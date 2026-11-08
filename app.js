@@ -462,7 +462,6 @@ function refreshVideoButton(song = activeSong()) {
   button.title = videoOpen ? 'Hide song video' : 'Show song video';
   button.setAttribute('aria-label', button.title);
   button.setAttribute('aria-pressed', String(videoOpen));
-  $('.now-playing').classList.toggle('has-video', available);
 }
 function resizeWidgetForPanels() {
   const libraryOpen = widget.classList.contains('library-open');

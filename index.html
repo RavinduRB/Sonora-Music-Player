@@ -36,13 +36,17 @@
           <h1 id="trackTitle">Your quiet space</h1>
           <p id="trackArtist">Add a song to begin</p>
         </div>
-        <div class="mini-controls" aria-label="Quick playback controls">
-          <button class="mini-button" id="miniPreviousButton" title="Previous" aria-label="Previous song"></button>
-          <button class="mini-button mini-play" id="miniPlayButton" title="Play" aria-label="Play"></button>
-          <button class="mini-button" id="miniNextButton" title="Next" aria-label="Next song"></button>
+        <div class="track-actions" role="group" aria-label="Track actions">
+          <div class="track-action-buttons">
+            <button class="video-toggle icon-button" id="videoButton" title="Show song video" aria-label="Show song video" aria-pressed="false" hidden>▶</button>
+            <button class="favorite icon-button" id="favoriteButton" title="Favorite" aria-label="Favorite">♡</button>
+          </div>
+          <div class="mini-controls" aria-label="Quick playback controls">
+            <button class="mini-button" id="miniPreviousButton" title="Previous" aria-label="Previous song"></button>
+            <button class="mini-button mini-play" id="miniPlayButton" title="Play" aria-label="Play"></button>
+            <button class="mini-button" id="miniNextButton" title="Next" aria-label="Next song"></button>
+          </div>
         </div>
-        <button class="video-toggle icon-button" id="videoButton" title="Show song video" aria-label="Show song video" aria-pressed="false" hidden>▶</button>
-        <button class="favorite icon-button" id="favoriteButton" title="Favorite" aria-label="Favorite">♡</button>
       </section>
 
       <section class="video-panel" id="videoPanel" aria-label="Song video">
