@@ -98,6 +98,8 @@ npm run android:build
 
 The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Copy it to an Android phone and open it to install Sonora. Android may require enabling installation from unknown sources for the app used to open the APK.
 
+After installing, add the **Sonora** widget from the Android launcher's widget picker. The small 2×1 widget provides previous, play/pause, and next controls; tapping the widget surface opens the Sonora app. Playback actions are handled when the app is open, and the widget is available as a launcher shortcut to the player.
+
 The generated Android project is intentionally ignored by Git because it is reproducible. Run `npm run android:sync` after changing `index.html`, `styles.css`, or `app.js` before opening the project in Android Studio.
 
 ## Run the widget from source
