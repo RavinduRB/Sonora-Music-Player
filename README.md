@@ -1,8 +1,8 @@
-# Sonora Widget
+# Sonora Music Player
 
-Sonora is a compact premium music player widget for the Windows desktop. It uses a glassmorphism/liquid-glass interface with comfortable blue, mint, and ice colors. The widget can play local audio files and YouTube music as audio-only playback without opening an external browser window.
+Sonora is a lightweight music player for Windows and Android, designed for quick access to your personal music library. It combines a premium glassmorphism/liquid-glass interface with local audio playback, YouTube music, Spotify track matching, and persistent library management.
 
-The widget is designed to stay small, remain above other applications, and provide quick access to a personal music library. It opens as a 320 px wide, compact window in the top-right corner of the primary display and grows downward when the library is opened.
+On Windows, Sonora runs as a compact desktop widget that can stay above other applications. On Android, the same player is available as an installable APK with a small home-screen widget for previous, play/pause, and next controls. Sonora keeps the interface focused and unobtrusive while making your music available wherever you use it.
 
 ## Technology stack
 
@@ -25,6 +25,7 @@ The widget is designed to stay small, remain above other applications, and provi
 ## Key features
 
 - Compact desktop widget interface
+- Android app with a small home-screen playback widget
 - Frameless transparent Electron window with minimize and close buttons
 - Always-on-top desktop pinning (pin button)
 - Click-through transparent area so other applications remain usable
@@ -54,6 +55,7 @@ The widget is designed to stay small, remain above other applications, and provi
 - Automatic library restoration after closing and reopening the application
 - Widget remains visible in screen recordings and screenshots
 - Windows executable build (folder-based or single-file portable)
+- Android debug APK build
 
 ## Project structure
 
