@@ -6,10 +6,17 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-packager . \"Sonora\" --platform=win32 --arch=x64 --icon=icon.ico --out=release-packaged --overwrite --prune=true --ignore=\"^/node_modules\" --ignore=\"^/(dist|release|release-packaged)\"",
-    "build:portable": "electron-builder --win portable"
+    "build:portable": "electron-builder --win portable",
+    "android:prepare": "node scripts/prepare-android.js",
+    "android:sync": "npm run android:prepare && npx cap sync android",
+    "android:open": "npm run android:sync && npx cap open android",
+    "android:build": "npm run android:sync && cd android && gradlew.bat assembleDebug"
   },
   "devDependencies": {
     "@electron/packager": "^18.4.4",
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/cli": "^7.4.3",
+    "@capacitor/core": "^7.4.3",
     "electron": "^39.1.2",
     "electron-builder": "^26.0.12"
   },

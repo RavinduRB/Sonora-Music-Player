@@ -20,6 +20,7 @@ The widget is designed to stay small, remain above other applications, and provi
 - **DM Sans and Playfair Display** - Typography loaded from Google Fonts (falls back to system fonts offline)
 - **Electron Packager** - Windows folder-based executable packaging (`npm run build`)
 - **electron-builder** - Optional single-file portable executable (`npm run build:portable`)
+- **Capacitor Android** - Android WebView packaging (`npm run android:build`)
 
 ## Key features
 
@@ -82,7 +83,22 @@ The widget is designed to stay small, remain above other applications, and provi
   - Google Fonts (optional; system fonts are used otherwise)
   - Initial dependency installation
 
+  For Android APK builds, install Android Studio with an Android SDK and Java 21 or newer.
+
 Local audio playback does not require an internet connection after the files have been added to the library.
+
+## Build and install the Android APK
+
+The Android target keeps the same web player UI and stores imported local audio in the phone's app storage.
+
+```powershell
+npm install
+npm run android:build
+```
+
+The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Copy it to an Android phone and open it to install Sonora. Android may require enabling installation from unknown sources for the app used to open the APK.
+
+The generated Android project is intentionally ignored by Git because it is reproducible. Run `npm run android:sync` after changing `index.html`, `styles.css`, or `app.js` before opening the project in Android Studio.
 
 ## Run the widget from source
 

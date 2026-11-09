@@ -1,0 +1,8 @@
+{
+  "appId": "com.sonora.musicplayer",
+  "appName": "Sonora",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

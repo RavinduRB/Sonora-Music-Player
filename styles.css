@@ -78,6 +78,23 @@ body {
   transition: height .35s ease, box-shadow .3s ease, color .4s ease, border-color .4s ease;
   margin: 8px 8px 0 auto;
 }
+
+@media (max-width: 600px) {
+  body {
+    min-width: 0;
+  }
+
+  .widget {
+    width: 100vw;
+    min-height: 100vh;
+    border-radius: 0;
+  }
+
+  .window-button,
+  .pin-button {
+    display: none;
+  }
+}
 .widget.library-open { height: 660px; }
 .widget.video-open { height: 340px; }
 .widget.library-open.video-open { height: 760px; }
