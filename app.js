@@ -950,12 +950,6 @@ function togglePlayback() {
   if (audio.paused) audio.play().catch(() => showToast('This audio file cannot be played')); else audio.pause();
 }
 
-window.sonoraWidgetAction = (action) => {
-  if (action === 'previous') return changeSong(-1);
-  if (action === 'next') return changeSong(1);
-  if (action === 'play') return togglePlayback();
-};
-
 function setLibraryOpen(open) {
   widget.classList.toggle('library-open', open);
   const button = $('#libraryButton');

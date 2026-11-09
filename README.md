@@ -1,357 +1,369 @@
 # Sonora Music Player
 
-Sonora is a lightweight music player for Windows and Android, designed for quick access to your personal music library. It combines a premium glassmorphism/liquid-glass interface with local audio playback, YouTube music, Spotify track matching, and persistent library management.
+Sonora is a compact music player with a glassmorphism interface. It runs as a
+frameless, always-on-top Windows widget and can also be packaged as an Android
+APK with Capacitor.
 
-On Windows, Sonora runs as a compact desktop widget that can stay above other applications. On Android, the same player is available as an installable APK with a small home-screen widget for previous, play/pause, and next controls. Sonora keeps the interface focused and unobtrusive while making your music available wherever you use it.
+The player supports local audio files, YouTube videos and playlists, and
+Spotify track links that are matched to YouTube playback. Local audio is
+stored in the application library so it remains available after restarting
+the app.
 
-## Technology stack
+## Features
 
-- **Electron** (v39) - Windows desktop window, always-on-top behavior, transparent frameless widget, minimize/close handling, native save dialog, and persistent app storage
-- **Local loopback server** - The Electron main process serves the app files from `127.0.0.1` on a random free port, which the YouTube player needs for a valid embed origin
-- **HTML5** - Accessible player structure and controls
-- **CSS3** - Glassmorphism, liquid-glass layers, light/dark theme variables, responsive widget layout, disc animation, and custom controls
-- **Vanilla JavaScript** - Playback state, queue management, local files, YouTube integration, metadata loading, JSON handling, and persistence
+### Playback
+
+- Local MP3, WAV, OGG, OGA, M4A, AAC, FLAC, Opus, WebM, and other
+  browser-supported audio formats
+- YouTube video and playlist playback through the YouTube IFrame API
+- Spotify track metadata lookup followed by YouTube matching
+- Play, pause, previous, next, shuffle, and repeat
+- Repeat modes: off, repeat all, and repeat one
+- Track seeking, volume control, and mute/unmute
+- Current track metadata, duration, and playback progress
+- Optional YouTube video panel for supported tracks
+
+### Library
+
+- Import multiple local audio files
+- Drag and drop audio files on Windows
+- Add YouTube video, playlist, Shorts, embed, live, and `youtu.be` links
+- Add Spotify track links
+- Favorite tracks and keep favorites at the top
+- Rename tracks
+- Remove tracks
+- Export the library as JSON
+- Import a previously exported JSON library
+- Restore the library automatically after restarting
+
+### Desktop experience
+
+- Frameless transparent Electron window
+- Compact 300 px widget that opens near the top-right of the primary display
+- Always-on-top pinning
+- Drag the widget by its header
+- Automatic light/dark theme based on the background behind the widget
+- Manual automatic, light, and dark theme modes
+- Minimize and close controls
+
+### Android experience
+
+- Same player interface packaged in an Android WebView
+- Responsive full-screen layout on phone-sized screens
+- Local audio import through the Android file picker
+- Library persistence through browser storage
+- YouTube and Spotify features when internet access is available
+
+The Android target is the Sonora app itself. It does not currently include an
+Android home-screen playback widget or background media-service integration.
+
+## Technology
+
+- **Electron** - Windows desktop window, native IPC, persistent file storage,
+  screen sampling, and window controls
+- **Capacitor Android** - Android WebView packaging
+- **HTML5 and CSS3** - Accessible player structure and responsive styling
+- **Vanilla JavaScript** - Playback state, library management, metadata, and
+  persistence
 - **HTML5 Audio API** - Local audio playback
-- **YouTube IFrame Player API** - Embedded audio-only YouTube video and playlist playback
-- **YouTube oEmbed API** - Song title, channel/artist, and thumbnail metadata
-- **Spotify oEmbed API** - Public track details for matching Spotify links to YouTube playback
-- **Node.js HTTPS and filesystem APIs** - Metadata requests and library persistence
-- **Electron desktopCapturer** - Measures the desktop brightness behind the widget for the automatic light/dark appearance
-- **DM Sans and Playfair Display** - Typography loaded from Google Fonts (falls back to system fonts offline)
-- **Electron Packager** - Windows folder-based executable packaging (`npm run build`)
-- **electron-builder** - Optional single-file portable executable (`npm run build:portable`)
-- **Capacitor Android** - Android WebView packaging (`npm run android:build`)
-
-## Key features
-
-- Compact desktop widget interface
-- Android app with a small home-screen playback widget
-- Frameless transparent Electron window with minimize and close buttons
-- Always-on-top desktop pinning (pin button)
-- Click-through transparent area so other applications remain usable
-- Local MP3, WAV, OGG, M4A, AAC, FLAC, Opus, and other browser-supported audio files
-- Drag-and-drop audio importing
-- YouTube video and playlist URL importing (youtube.com, music.youtube.com, and youtu.be)
-- Spotify track URL importing with automatic YouTube matching for playback
-- Audio-only YouTube playback inside the widget, including full playlists
-- No external browser window for YouTube playback
-- YouTube title and channel/artist metadata extraction
-- Play, pause, previous, next, shuffle, and three-state repeat controls
-- Seek bar with current time and duration
-- Local and YouTube volume control
-- Mute and unmute button
-- Rotating disc animation while music is playing
-- Favorite songs that are highlighted and kept at the top of the library
-- Rename songs
-- Expandable music library with a single button to open and close it
-- Library scroll bar styled with the application colors
-- Automatic light/dark appearance: text, icons, and glass tint change to stay readable over bright or dark desktop backgrounds
-- Theme button to switch manually between automatic, light, and dark (the choice is remembered)
-- Tiny previous, play/pause, and next buttons on the compact widget (hidden while the library is open)
-- Remove songs from the library
-- JSON library save dialog
-- JSON library import and export
-- Local audio files remain playable after restarting the widget
-- Automatic library restoration after closing and reopening the application
-- Widget remains visible in screen recordings and screenshots
-- Windows executable build (folder-based or single-file portable)
-- Android debug APK build
+- **YouTube IFrame Player API** - YouTube video and playlist playback
+- **YouTube oEmbed API** - YouTube title, channel, and thumbnail metadata
+- **Spotify oEmbed API** - Public Spotify track metadata
+- **Node.js** - Electron main-process HTTPS, filesystem, and library APIs
+- **electron-packager** - Windows folder-based packaging
+- **electron-builder** - Windows portable executable packaging
+- **Capacitor CLI and Android** - Android project generation and APK builds
 
 ## Project structure
 
 ```text
 .
-├── app.js             Renderer logic and player behavior
-├── index.html         Widget markup and controls
-├── styles.css         Glassmorphism styling, themes, and animations
-├── main.js            Electron main process, local app server, storage, theme sampling, and window control
-├── preload.js         Secure renderer-to-main IPC bridge (contextIsolation enabled)
-├── package.json       Scripts, dependencies, and electron-builder settings
-├── package-lock.json  Locked dependency versions
-├── icon.ico           Application icon (◒) used by Sonora.exe
-├── icon.svg           Vector version of the application icon
-├── .gitignore         Excludes node_modules, dist, release, release-packaged, and logs
-├── release-packaged/  Generated by npm run build (not committed)
-└── dist/, release/    Generated by electron-builder (not committed)
+├── app.js                  Renderer logic and player behavior
+├── index.html              Player markup and controls
+├── styles.css              Glassmorphism styling and responsive layout
+├── main.js                 Electron process, local server, storage, and IPC
+├── preload.js              Secure Electron renderer-to-main bridge
+├── package.json             Scripts, dependencies, and Electron settings
+├── package-lock.json        Locked npm dependency versions
+├── capacitor.config.json    Capacitor Android configuration
+├── scripts/
+│   └── prepare-android.js   Copies web assets into www/
+├── icon.ico                 Windows application icon
+├── icon.svg                 Web and Android icon source
+├── Sonora-debug.apk        Locally generated Android debug APK
+└── README.md               This documentation
+```
+
+The following paths are generated and intentionally ignored by Git:
+
+```text
+node_modules/               npm dependencies
+www/                        Capacitor web asset staging directory
+android/                    Generated Capacitor Android project
+dist/                       electron-builder output
+release/                    Build output
+release-packaged/           electron-packager output
+*.apk                       Locally generated APK files
 ```
 
 ## Requirements
 
+### Windows development
+
 - Windows 10 or later
 - Node.js and npm
-- Internet access for:
-  - YouTube audio playback
-  - YouTube title and artist/channel metadata
-  - Google Fonts (optional; system fonts are used otherwise)
-  - Initial dependency installation
+- Internet access for the initial dependency installation and online playback
 
-  For Android APK builds, install Android Studio with an Android SDK and Java 21 or newer.
+### Android APK builds
 
-Local audio playback does not require an internet connection after the files have been added to the library.
+- Android Studio or an Android SDK installation
+- Android SDK configured through `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or
+  `android/local.properties`
+- Java 21 or newer
+- Internet access for Gradle and Android dependency downloads
 
-## Build and install the Android APK
+The Android SDK must include the platform and build-tools versions selected by
+the generated Capacitor project. Android Studio can install these components
+from **Tools > SDK Manager**.
 
-The Android target keeps the same web player UI and stores imported local audio in the phone's app storage.
+## Install dependencies
 
-```powershell
-npm install
-npm run android:build
-```
-
-The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Copy it to an Android phone and open it to install Sonora. Android may require enabling installation from unknown sources for the app used to open the APK.
-
-After installing, add the **Sonora** widget from the Android launcher's widget picker. The small 2×1 widget provides previous, play/pause, and next controls; tapping the widget surface opens the Sonora app. Playback actions are handled when the app is open, and the widget is available as a launcher shortcut to the player.
-
-The generated Android project is intentionally ignored by Git because it is reproducible. Run `npm run android:sync` after changing `index.html`, `styles.css`, or `app.js` before opening the project in Android Studio.
-
-## Run the widget from source
-
-Open PowerShell in the project folder:
-
-```powershell
-cd "C:\Users\ASUS\Desktop\Sonora Music Player"
-```
-
-Install dependencies:
+From the repository root:
 
 ```powershell
 npm install
 ```
 
-Start the desktop widget:
+## Run the Windows app from source
 
 ```powershell
 npm start
 ```
 
-The Sonora widget opens as a small desktop window. It does not open as a normal browser tab.
+The widget opens as a desktop window rather than a normal browser tab.
 
-## Run the packaged Windows executable
+## Build the Windows app
 
-The packaged executable is located at:
-
-```text
-release-packaged\Sonora-win32-x64\Sonora.exe
-```
-
-Double-click `Sonora.exe` to open the widget.
-
-Keep the complete `Sonora-win32-x64` folder together. The executable requires the Electron runtime files stored beside it.
-
-## Build a new Windows executable
-
-From the project folder, run:
+### Folder-based executable
 
 ```powershell
 npm run build
 ```
 
-The generated application is written to:
-
-```text
-release-packaged\Sonora-win32-x64\
-```
-
-The executable is:
+The output is:
 
 ```text
 release-packaged\Sonora-win32-x64\Sonora.exe
 ```
 
-To create a single-file portable executable instead, run:
+Keep the complete `Sonora-win32-x64` directory together. The executable
+requires the Electron runtime files beside it.
+
+### Portable executable
 
 ```powershell
 npm run build:portable
 ```
 
-The portable build is written to `dist\` as `Sonora-1.0.0.exe` by electron-builder.
+The portable executable is written to `dist\` with a name similar to:
 
-## Header buttons
+```text
+Sonora-1.0.0.exe
+```
 
-From left to right, the header contains:
+Close running Sonora instances before building. Windows may lock files in
+`release-packaged\` or `dist\`.
 
-| Button | Action |
+## Build the Android APK
+
+### One-command debug build
+
+```powershell
+npm run android:build
+```
+
+This command:
+
+1. Copies `index.html`, `styles.css`, `app.js`, and `icon.svg` to `www/`.
+2. Synchronizes the web assets into the generated Capacitor project.
+3. Runs Gradle to assemble the debug APK.
+
+The APK is created at:
+
+```text
+android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+The repository root may also contain a manually copied `Sonora-debug.apk`.
+That file is a build artifact and is ignored by Git.
+
+### Prepare or synchronize without building
+
+After changing the web app:
+
+```powershell
+npm run android:prepare
+npm run android:sync
+```
+
+`android:prepare` refreshes the `www/` directory. `android:sync` also runs
+`npx cap sync android` to copy the files into the native project.
+
+### Open in Android Studio
+
+```powershell
+npm run android:open
+```
+
+This prepares the web assets, synchronizes Capacitor, and opens the generated
+Android project in Android Studio.
+
+### Configure the Android SDK manually
+
+If Gradle cannot find the SDK, create or update this file:
+
+```text
+android\local.properties
+```
+
+Use an escaped Windows path:
+
+```text
+sdk.dir=C:\\Users\\YourName\\AppData\\Local\\Android\\Sdk
+```
+
+`android/local.properties` is machine-specific and should not be committed.
+
+## Install the APK on a phone
+
+### Install from the phone
+
+1. Copy `android\app\build\outputs\apk\debug\app-debug.apk` to the phone.
+2. Open the APK from the Files or Downloads app.
+3. Allow installation from that source if Android asks.
+4. Confirm the installation and launch **Sonora**.
+
+### Install with ADB
+
+With USB debugging enabled and the phone connected:
+
+```powershell
+adb install -r android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+The debug APK is intended for local testing. A release distribution requires
+a signing key and a separate release build configuration.
+
+## Using Sonora
+
+### Add local audio
+
+1. Open the library with the library button.
+2. Select **Local audio**.
+3. Choose one or more audio files.
+
+On Windows, audio files can also be dropped onto the widget. On Android, use
+the system file picker.
+
+Local audio is converted to data URLs in the browser-based Android library.
+This keeps the files available after restarting, but large libraries consume
+substantial application storage. The Electron desktop build uses its native
+file-backed library path when available.
+
+### Add YouTube or Spotify music
+
+1. Open the library.
+2. Select **YouTube or Spotify**.
+3. Paste a supported URL.
+4. Select **Add song**.
+
+Examples:
+
+```text
+https://www.youtube.com/watch?v=VIDEO_ID
+https://youtu.be/VIDEO_ID
+https://www.youtube.com/playlist?list=PLAYLIST_ID
+https://music.youtube.com/watch?v=VIDEO_ID
+https://open.spotify.com/track/TRACK_ID
+```
+
+Spotify links use public oEmbed metadata and are matched to YouTube. Sonora
+does not provide direct Spotify audio playback and does not require a Spotify
+login. Spotify playlists and albums are not supported.
+
+YouTube Mix playlists beginning with `RD` and private playlists cannot be
+embedded reliably; a Mix link falls back to its individual video when
+possible.
+
+### Playback controls
+
+| Control | Action |
 | --- | --- |
-| `≋` Library | Open or close the music library |
-| Theme (half circle / sun / moon) | Cycle between automatic, light, and dark appearance |
-| `⌖` Pin | Keep the widget above other windows, or release it |
-| `▣` Save | Save the library as a JSON file |
-| `—` Minimize | Minimize the widget to the taskbar |
-| `×` Close | Close Sonora |
+| Play/Pause | Start or pause the active track |
+| Previous / Next | Move through the library or playlist |
+| Shuffle | Play tracks in random order without repeating until the queue is exhausted |
+| Repeat | Cycle through off, repeat all, and repeat one |
+| Seek bar | Move within the active track |
+| Volume | Change playback volume |
+| Speaker | Mute or restore the previous volume |
+| Heart | Add or remove a favorite |
+| Theme | Cycle automatic, light, and dark modes |
 
-## Manual user guide
+Favorites are saved and displayed at the top of the library. Renamed tracks
+retain their custom names when online metadata is refreshed.
 
-### 1. Start Sonora
+### Import and export a library
 
-1. Double-click `Sonora.exe`, or run `npm start` from the project folder.
-2. The widget appears near the top-right of the primary display.
-3. The widget is pinned above other windows by default.
+Use **Export JSON** in the library or the save button in the header to create
+a `sonora-library.json` file. Use **Import JSON** to replace the current
+library with a previously exported file.
 
-### 2. Move the widget
+The exported data can include:
 
-1. Move the pointer over the Sonora header.
-2. Drag the header to another position.
-3. The widget can be placed over another application without opening a separate browser window.
+- Track title and artist
+- Track type and URL
+- Local audio data
+- YouTube metadata and playlist IDs
+- Favorite and custom-title state
 
-The transparent area around the widget lets clicks pass through to other applications. The visible widget remains interactive.
+Export the current library before importing if you want to keep a backup.
 
-### 3. Pin or unpin the widget
+## Storage and privacy
 
-Click the pin icon in the header:
+### Windows
 
-- Highlighted pin: widget stays above other windows
-- Unhighlighted pin: widget behaves like a normal window
+The Electron main process stores the library and settings in the application
+user-data directory, normally under `%APPDATA%`. It uses:
 
-### 4. Add local music
+```text
+sonora-library.json
+sonora-settings.json
+```
 
-1. Click the library icon in the header.
-2. Click **Local audio**.
-3. Select one or more audio files.
+The browser storage copy allows the renderer to restore state when needed.
+The Save button creates an additional JSON export at the location selected by
+the user.
 
-You can also drag audio files from File Explorer and drop them anywhere on the widget (or onto the **Drop audio files here to add them** area). Files that are not audio are ignored.
+### Android
 
-Supported files depend on the audio formats supported by the browser engine, including common formats such as:
+The Capacitor build uses WebView browser storage for the library and settings.
+Imported local audio is stored as data in that library. Uninstalling or
+clearing Sonora's app data removes the stored library.
 
-- MP3
-- WAV
-- OGG
-- M4A
-- AAC, FLAC, and Opus
+### Network access
 
-Imported local audio is embedded in the Sonora library data (as a data URL) so it can be played again after restarting the widget. Very large files make the library file large.
-
-### 5. Add a YouTube or Spotify song
-
-1. Click the library icon.
-2. Click **YouTube or Spotify**.
-3. Paste a YouTube video or playlist URL, or a Spotify track URL.
-4. Click **Add song**.
-
-Supported URL styles include:
-
-- `https://www.youtube.com/watch?v=VIDEO_ID`
-- `https://youtu.be/VIDEO_ID`
-- `https://www.youtube.com/playlist?list=PLAYLIST_ID`
-- `https://music.youtube.com/watch?v=VIDEO_ID`
-- YouTube Shorts links
-- YouTube embed links
-- YouTube live links
-
-Spotify track links are looked up using Spotify's public embed metadata, then matched to a YouTube video. Sonora plays that YouTube match; a Spotify link does not provide direct Spotify audio playback and no Spotify login is required. Spotify playlists and albums are not supported.
-
-### 5a. Play a YouTube playlist
-
-Paste a playlist link (or a video link containing `list=PLAYLIST_ID`) and the whole playlist is added as one library entry. When it plays, **Next** and **Previous** move through the videos in the playlist first, then on to the next library entry. The track title and its position (for example `2/25`) are shown in the player. Shuffle and Repeat also apply to the playlist.
-
-Auto-generated YouTube Mix playlists (`list=RD...`) cannot be embedded, so for those links only the single video is added. Private playlists cannot be played.
-
-Sonora retrieves the YouTube title and channel/artist name. YouTube playback runs through an invisible embedded player, so no external browser window opens and no video is shown in the widget.
-
-### 6. Select a song
-
-1. Open the library.
-2. Click any song in the song list.
-3. The selected song becomes the current track and starts playing.
-4. Click the active song again to pause or resume it.
-
-### 7. Use playback controls
-
-- **Play/Pause**: Start or pause the current track. The icon always matches the real state.
-- **Tiny buttons (compact view)**: While the library is closed, small previous, play/pause, and next buttons sit beside the song title so you can control playback without opening the library. They hide when the library is open, where the full controls are visible.
-- **Previous / Next**: Move to the previous or next song (wrapping around at the ends). With Shuffle on, Previous returns to the songs played before.
-- **Shuffle**: Plays songs in random order without repeating one until all have played. The button is highlighted when on.
-- **Repeat**: Click to cycle through three states:
-  - Off: playback stops after the last song
-  - Repeat all (highlighted): the library loops
-  - Repeat one (highlighted, marked `1`): the current song replays
-- **Seek bar**: Jump to another position in the track
-- **Volume slider**: Change playback volume
-- **Speaker button**: Mute or restore the previous volume
-- **Favorite (heart)**: Mark the current song as a favorite
-
-When music is playing, the cover changes into a rotating disc. The disc stops when playback is paused.
-
-### 8. Open and close the library
-
-Click the library button in the header to open the library. Click it again (or the `×` in the library heading) to close it. The button is highlighted while the library is open.
-
-### 9. Favorite songs
-
-Click the heart in the player, or the heart next to a song in the library. Favorite songs are highlighted with a pink marker and a filled heart, and move to the top of the library. Click the heart again to remove the favorite. Favorites are saved with the library.
-
-### 10. Rename a song
-
-1. Open the library.
-2. Click the pencil icon next to a song.
-3. Type the new name and press **Enter** (or click elsewhere) to save. Press **Esc** to cancel.
-
-Renamed YouTube songs keep their custom name when metadata is refreshed.
-
-### 11. Remove a song
-
-1. Open the library.
-2. Find the song in the list.
-3. Click the `×` button on the right side of the song.
-
-The song is removed from the current library and persistent storage.
-
-### 12. Save the library as JSON
-
-1. Click the save icon in the widget header, or open the library and click **Export JSON**.
-2. Choose a location in the save dialog.
-3. Save the file as `sonora-library.json`.
-
-The JSON file contains the library entries, including:
-
-- Song title
-- Artist or YouTube channel
-- Song type
-- YouTube URL or local audio data
-- Metadata information
-- Favorite status, custom names, and YouTube playlist IDs
-
-### 13. Import a JSON library
-
-1. Open the library.
-2. Click **Import JSON**.
-3. Select a previously exported Sonora JSON file.
-4. The imported songs replace the current library, and playback stops.
-
-Only valid Sonora song entries are accepted. Invalid JSON or unsupported entries show an error message and leave the library unchanged. Export the current library first if you want to keep it.
-
-### 14. Minimize, close, and reopen the widget
-
-Click the `—` button in the header to minimize the widget, or the `×` button to close it. Reopen it with the executable or `npm start`.
-
-The previous library is restored automatically. Local audio and YouTube songs remain available for playback.
-
-### 15. Automatic and manual light/dark appearance
-
-Click the theme button in the header (next to the library button) to cycle through three modes:
-
-- **Automatic** (half-filled circle icon): the default. Sonora follows the desktop behind the widget.
-- **Light** (sun icon): always use the light theme.
-- **Dark** (moon icon): always use the dark theme.
-
-The selected mode is saved and restored the next time Sonora starts.
-
-In automatic mode, Sonora measures the brightness of the desktop behind the widget about every 1.5 seconds. Over a bright background it uses dark text and icons on a light glass panel. Over a dark background it switches to light text and icons on a dark glass panel. A small delay and threshold gap prevent flickering on mid-tone backgrounds. Move the widget over a different window or wallpaper and the colors follow automatically.
-
-The widget remains visible in screen recordings and screenshots. Automatic theme detection samples the desktop around the widget so its own appearance does not affect the brightness measurement.
-
-## Data and privacy
-
-- Library data is stored locally on the computer.
-- The library is saved as `sonora-library.json` in the Electron application user-data directory (under `%APPDATA%`), with a copy in the app's browser storage. Local audio data is part of this library.
-- The theme choice is saved as `sonora-settings.json` in the same directory.
-- The Save button creates a JSON copy at the location selected by the user (default folder: Downloads).
-- The widget is visible in screen capture; the app samples nearby screen pixels for automatic theme selection and does not store or transmit screenshots.
-- YouTube links use YouTube services for audio playback and public metadata. Spotify track links use Spotify's public embed metadata and YouTube search to find a playable match.
-- No account login is required by Sonora.
+- Local audio playback does not require an internet connection after import.
+- YouTube playback and YouTube metadata require internet access.
+- Spotify track matching requires internet access.
+- Google Fonts are optional; system fallbacks are used when they are
+  unavailable.
+- Sonora does not require account login.
+- The Windows automatic theme mode samples nearby screen pixels for brightness
+  detection. It does not save or transmit screenshots.
 
 ## Troubleshooting
 
-### The widget does not start
+### `npm start` does not launch
 
 Run:
 
@@ -360,28 +372,81 @@ npm install
 npm start
 ```
 
-If the packaged executable does not start, confirm that the complete `Sonora-win32-x64` folder has not been separated.
+If the packaged executable fails, confirm that the complete
+`release-packaged\Sonora-win32-x64` directory is present.
 
-### YouTube metadata does not appear
+### Android build says the SDK location is missing
 
-Confirm that the computer is connected to the internet and that the URL is a valid YouTube link. The video ID remains as a fallback if metadata cannot be retrieved.
+Check that the Android SDK exists and configure one of:
 
-### YouTube audio does not play
+```powershell
+$env:ANDROID_HOME = "C:\Users\YourName\AppData\Local\Android\Sdk"
+```
 
-Confirm that internet access is available and press play again. YouTube playback requires the embedded YouTube player to load.
+or `android\local.properties`:
+
+```text
+sdk.dir=C:\\Users\\YourName\\AppData\\Local\\Android\\Sdk
+```
+
+Then run:
+
+```powershell
+npm run android:build
+```
+
+### Android APK will not install
+
+Confirm that the APK completed downloading, that Android allows installation
+from the file manager or browser being used, and that the phone is running a
+compatible Android version. For an existing installation, use:
+
+```powershell
+adb install -r android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+### YouTube metadata or playback does not work
+
+Confirm internet access and try a direct public YouTube video URL. Removed,
+private, age-restricted, or embedding-disabled videos cannot play in the
+embedded player.
 
 ### A local song does not play
 
-Confirm that the file is a supported audio format and import it again through the library.
+Confirm that the file is a supported audio format and import it again. On
+Android, confirm that the file picker granted Sonora access to the selected
+file.
 
-### The colors do not match the background
+### The Android library disappeared
 
-The light/dark appearance updates about every 1.5 to 3 seconds after the widget moves or the background changes. Mid-tone backgrounds keep the current theme to avoid flickering. Theme detection samples around the widget; if screen capture is blocked (for example on a locked screen), the last theme is kept.
+Do not clear Sonora's app data or uninstall the app. Export the library as
+JSON regularly if the library is important, especially before changing
+devices.
 
-### The widget is hidden or cannot be found
+### The theme is not correct on Windows
 
-Click Sonora in the taskbar if it was minimized. If it is off screen after a display change, close it and start it again; it reopens at the top-right of the primary display.
+Automatic theme detection updates after the widget moves or the background
+changes. Use the theme button to select Light or Dark manually if screen
+capture is unavailable or the background is a mid-tone color.
 
-### Updating the packaged executable
+## Development notes
 
-Close Sonora before running `npm run build`; a running instance locks the files in `release-packaged\Sonora-win32-x64`. The same applies to `dist\` and `npm run build:portable`.
+The Electron renderer is designed to run both with and without the
+`window.sonora` preload bridge. Electron uses the bridge for native storage,
+dialogs, window controls, and metadata requests. The Android WebView falls
+back to browser APIs for local audio, browser storage, and JSON downloads.
+
+When adding or changing web files, run:
+
+```powershell
+npm run android:sync
+```
+
+before testing in Android Studio. Do not edit generated files under `android/`
+as a source-of-truth change; update the web source or Capacitor configuration
+instead and regenerate the project.
+
+## License
+
+No license file is currently included in this repository. Add a license
+before distributing Sonora outside your own development or testing use.
