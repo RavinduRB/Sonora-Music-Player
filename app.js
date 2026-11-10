@@ -1,6 +1,7 @@
 const audio = document.querySelector('#audio');
 const $ = (selector) => document.querySelector(selector);
 const widget = $('.widget');
+const isAndroidApp = window.Capacitor?.getPlatform?.() === 'android';
 const STORAGE_KEY = 'sonora-library-v1';
 const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'weba', 'webm'];
 
@@ -373,7 +374,7 @@ function renderSongs() {
       <span class="song-dot"></span>
       <span class="song-info">${title}<small>${escapeHtml(subtitle)}</small></span>
       <button class="item-action fav-song ${song.favorite ? 'on' : ''}" data-favorite="${index}" title="${song.favorite ? 'Remove from favorites' : 'Add to favorites'}" aria-label="Toggle favorite for ${escapeHtml(song.title)}">${song.favorite ? ICONS.heartFilled : ICONS.heart}</button>
-      <button class="item-action rename-song" data-rename="${index}" title="Rename" aria-label="Rename ${escapeHtml(song.title)}">${ICONS.edit}</button>
+      ${isAndroidApp ? '' : `<button class="item-action rename-song" data-rename="${index}" title="Rename" aria-label="Rename ${escapeHtml(song.title)}">${ICONS.edit}</button>`}
       <button class="remove-song" data-remove="${index}" title="${pendingYoutubeSongIds.has(song.id) ? 'Adding song' : 'Remove'}" aria-label="Remove ${escapeHtml(song.title)}" ${pendingYoutubeSongIds.has(song.id) ? 'disabled' : ''}>×</button>
     </li>`;
   }).join('');
