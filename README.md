@@ -1,5 +1,7 @@
 # Sonora Music Player
 
+<img width="2069" height="1164" alt="Sonora Music Player" src="https://github.com/user-attachments/assets/5be92018-6480-4272-9854-414a3277fcf1" />
+
 Sonora is a compact music player with a glassmorphism interface. It runs as a
 frameless, always-on-top Windows widget and can also be packaged as an Android
 APK with Capacitor.
